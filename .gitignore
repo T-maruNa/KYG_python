@@ -1,0 +1,19 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# IDE settings
+.vscode/
+.idea/ 
+
+.batch/Lib
+batch/Lib/
+*.cfg
+*.csv
+*.exe
+*.xls
+*.db
