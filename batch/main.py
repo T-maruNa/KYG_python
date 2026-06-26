@@ -26,6 +26,7 @@ from src.api.wordpress_client import WordPressClient
 from src.database.t_stock_actual_manager import TStockActualManager
 from src.database.t_stock_predict_manager import TStockPredictManager
 from src.database.t_blog_post_history_manager import TBlogPostHistoryManager
+from src.core.ai_budget_guard import AIBudgetGuard
 
 # ------------------------------------------------------------------
 # 引数パース
@@ -215,5 +216,13 @@ if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
             blog_history.insert(formatted_today, 'monthly',
                                 wp_post_id=wp_id,
                                 status='dry_run' if DRY_RUN else 'scheduled')
+
+# ------------------------------------------------------------------
+# 10. AI予算使用状況を表示
+# ------------------------------------------------------------------
+guard = AIBudgetGuard()
+print(f'\n=== AI予算状況 ===')
+print(f'  本日残り呼び出し回数: {guard.remaining_calls_today()} 回')
+print(f'  今月残り予算: {guard.remaining_budget_this_month():.0f} 円')
 
 print(f'\n=== バッチ完了 {formatted_today} ===')

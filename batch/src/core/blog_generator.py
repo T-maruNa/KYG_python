@@ -6,6 +6,7 @@ from src.database.t_monthly_result_manager import TMonthlyResultManager
 from src.database.t_character_asset_manager import TCharacterAssetManager
 from src.core.stats_aggregator import StatsAggregator
 from src.ai_clients.gemini_client import GeminiClient
+from src.core.ai_budget_guard import AIBudgetGuard
 
 ANALYST_PROFILES = {
     'rei': {
@@ -68,6 +69,7 @@ class BlogGenerator:
         self.asset_manager = TCharacterAssetManager()
         self.stats = StatsAggregator()
         self.gemini = GeminiClient()
+        self.guard = AIBudgetGuard()
 
     # ------------------------------------------------------------------
     # 日次記事
@@ -297,6 +299,10 @@ class BlogGenerator:
                      f'投資助言・断言表現は避けてください。'
                  )},
             ]
-            return self.gemini.execute_chat(messages).strip()
+            result = self.guard.execute(
+                self.gemini.execute_chat, messages,
+                call_type='character_comment', model='gemini',
+            )
+            return result.strip() if result else f'今日は{sign}{profit:,}円でした。'
         except Exception:
             return f'今日は{sign}{profit:,}円でした。'
