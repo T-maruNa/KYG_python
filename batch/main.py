@@ -190,15 +190,18 @@ if not blog_history.exists(formatted_today, 'daily'):
         wp = WordPressClient()
         if wp.exists_post(formatted_today) and not DRY_RUN:
             print(f'WordPress投稿スキップ: {formatted_today} は投稿済み')
-            blog_history.insert(formatted_today, 'daily', status='skipped')
+            blog_history.insert(formatted_today, 'daily', title=title,
+                                content=content, status='skipped')
         else:
             wp_id = wp.post(title, content, formatted_today, scheduled_hour=8, dry_run=DRY_RUN)
             if wp_id is not None:
-                blog_history.insert(formatted_today, 'daily', wp_post_id=wp_id,
+                blog_history.insert(formatted_today, 'daily', title=title,
+                                    content=content, wp_post_id=wp_id,
                                     status='dry_run' if DRY_RUN else 'scheduled')
                 print(f'WordPress投稿完了: post_id={wp_id}')
             else:
-                blog_history.insert(formatted_today, 'daily', status='failed')
+                blog_history.insert(formatted_today, 'daily', title=title,
+                                    content=content, status='failed')
                 print('WordPress投稿失敗')
 else:
     print(f'ブログ投稿スキップ: {formatted_today} は投稿済み')
@@ -214,6 +217,7 @@ if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
             wp_id = wp.post(monthly_title, monthly_content, formatted_today,
                             scheduled_hour=9, dry_run=DRY_RUN)
             blog_history.insert(formatted_today, 'monthly',
+                                title=monthly_title, content=monthly_content,
                                 wp_post_id=wp_id,
                                 status='dry_run' if DRY_RUN else 'scheduled')
 
