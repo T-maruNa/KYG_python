@@ -9,7 +9,14 @@ Usage:
 import sys
 import os
 from datetime import date, timedelta
-import jpholiday
+
+try:
+    import jpholiday
+    _HAS_JPHOLIDAY = True
+except ImportError:
+    _HAS_JPHOLIDAY = False
+    print('警告: jpholiday が未インストールのため祝日チェックをスキップします。'
+          '  pip install jpholiday でインストールしてください。')
 
 # batch/ を sys.path に追加（コマンドライン実行時用）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -35,16 +42,39 @@ from src.core.ai_budget_guard import AIBudgetGuard
 DRY_RUN = '--dry-run' in sys.argv
 BACKFILL = '--backfill' in sys.argv
 
+
+def _is_business_day(d: date) -> bool:
+    """土日・祝日でなければ True"""
+    if d.weekday() >= 5:
+        return False
+    if _HAS_JPHOLIDAY and jpholiday.is_holiday(d):
+        return False
+    return True
+
+
+def _prev_business_day(d: date) -> date:
+    """d の直前の営業日を返す"""
+    target = d - timedelta(days=1)
+    while not _is_business_day(target):
+        target -= timedelta(days=1)
+    return target
+
+
+def _next_business_day(d: date) -> date:
+    """d の直後の営業日を返す"""
+    target = d + timedelta(days=1)
+    while not _is_business_day(target):
+        target += timedelta(days=1)
+    return target
+
+
 # ------------------------------------------------------------------
 # 日付計算
 # ------------------------------------------------------------------
 today = date.today()
-one_day = timedelta(days=1)
 
-MONDAY, FRIDAY = 0, 4
-
-prev_day = today - (one_day * 3 if today.weekday() == MONDAY else one_day)
-next_day = today + (one_day * 3 if today.weekday() == FRIDAY else one_day)
+prev_day = _prev_business_day(today)
+next_day = _next_business_day(today)
 
 formatted_today = today.strftime('%Y-%m-%d')
 formatted_prev_day = prev_day.strftime('%Y-%m-%d')
@@ -70,11 +100,10 @@ print(f'  DRY_RUN: {DRY_RUN}')
 # 土日・祝日チェック（休場日はスキップ）
 # ------------------------------------------------------------------
 if not BACKFILL:
-    if today.weekday() >= 5:
-        print(f'=== 休場日スキップ (土日): {formatted_today} ===')
-        sys.exit(0)
-    if jpholiday.is_holiday(today):
-        print(f'=== 休場日スキップ (祝日: {jpholiday.is_holiday_name(today)}): {formatted_today} ===')
+    if not _is_business_day(today):
+        holiday_name = (jpholiday.is_holiday_name(today) if _HAS_JPHOLIDAY else '')
+        reason = f'祝日: {holiday_name}' if holiday_name else '土日'
+        print(f'=== 休場日スキップ ({reason}): {formatted_today} ===')
         sys.exit(0)
 
 # ------------------------------------------------------------------
@@ -119,12 +148,7 @@ verifier.verify(formatted_prev_day, prev_year_month)
 # 3. 月初リセット
 # ------------------------------------------------------------------
 trader = VirtualTrader()
-if is_first_business_day:
-    print(f'月初初期化: {year_month}')
-    trader.initialize_month(year_month)
-else:
-    # 月が変わっていなくても初回実行時に初期化されていることを保証
-    trader.initialize_month(year_month)
+trader.initialize_month(year_month)
 
 # ------------------------------------------------------------------
 # 4. 資金残高に応じた投資可能価格帯を取得
@@ -210,12 +234,16 @@ if not blog_history.exists(formatted_today, 'daily'):
             print(f'WordPress投稿スキップ: {formatted_today} は投稿済み')
             blog_history.insert(formatted_today, 'daily', title=title,
                                 content=content, status='skipped')
+        elif DRY_RUN:
+            wp_id = wp.post(title, content, formatted_today, scheduled_hour=8, dry_run=True)
+            print(f'[DRY-RUN] WordPress投稿シミュレート完了: post_id={wp_id}')
+            # DRY_RUN 時は履歴に書かない（本番実行を妨げないため）
         else:
-            wp_id = wp.post(title, content, formatted_today, scheduled_hour=8, dry_run=DRY_RUN)
+            wp_id = wp.post(title, content, formatted_today, scheduled_hour=8, dry_run=False)
             if wp_id is not None:
                 blog_history.insert(formatted_today, 'daily', title=title,
                                     content=content, wp_post_id=wp_id,
-                                    status='dry_run' if DRY_RUN else 'scheduled')
+                                    status='scheduled')
                 print(f'WordPress投稿完了: post_id={wp_id}')
             else:
                 blog_history.insert(formatted_today, 'daily', title=title,
@@ -232,12 +260,17 @@ if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
         errors = blog_gen.check(monthly_content, [])
         if not errors:
             wp = WordPressClient()
-            wp_id = wp.post(monthly_title, monthly_content, formatted_today,
-                            scheduled_hour=9, dry_run=DRY_RUN)
-            blog_history.insert(formatted_today, 'monthly',
-                                title=monthly_title, content=monthly_content,
-                                wp_post_id=wp_id,
-                                status='dry_run' if DRY_RUN else 'scheduled')
+            if not DRY_RUN:
+                wp_id = wp.post(monthly_title, monthly_content, formatted_today,
+                                scheduled_hour=9, dry_run=False)
+                blog_history.insert(formatted_today, 'monthly',
+                                    title=monthly_title, content=monthly_content,
+                                    wp_post_id=wp_id,
+                                    status='scheduled')
+            else:
+                wp.post(monthly_title, monthly_content, formatted_today,
+                        scheduled_hour=9, dry_run=True)
+                print('[DRY-RUN] 月次記事投稿シミュレート完了')
 
 # ------------------------------------------------------------------
 # 10. AI予算使用状況を表示

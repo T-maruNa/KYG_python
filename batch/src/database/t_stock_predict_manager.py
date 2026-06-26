@@ -50,12 +50,12 @@ class TStockPredictManager(DBManager):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT stock_code, stock_name, predicted_open_price, predicted_high_price, predicted_low_price, predicted_close_price, predicted_volume, prediction_reason
+                SELECT stock_code, stock_name, predicted_open_price, predicted_high_price, predicted_low_price, predicted_close_price, predicted_volume, prediction_reason, range
                 FROM t_stock_predict
                 WHERE predicted_date = ? AND analyst_name = ?
                 ORDER BY stock_code
             ''', (predicted_date, analyst_name))
-            return [{"code": row[0], "name": row[1], "predicted_open_price": row[2], "predicted_high_price": row[3], "predicted_low_price": row[4], "predicted_close_price": row[5], "predicted_volume": row[6], "prediction_reason": row[7]} 
+            return [{"code": row[0], "name": row[1], "predicted_open_price": row[2], "predicted_high_price": row[3], "predicted_low_price": row[4], "predicted_close_price": row[5], "predicted_volume": row[6], "prediction_reason": row[7], "range": row[8]}
                    for row in cursor.fetchall()]
 
     def exists_prediction(self, predicted_date: str) -> bool:

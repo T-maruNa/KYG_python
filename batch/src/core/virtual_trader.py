@@ -65,7 +65,8 @@ class VirtualTrader:
             predictions = self.predict_manager.get_prediction_by_date(trade_date, analyst_name)
 
             for pred in predictions:
-                price_range = self._classify_range(pred.get('predicted_close_price', 0))
+                # 保存済みの range を優先して使う（予測時に前日終値で判定済み）
+                price_range = pred.get('range') or self._classify_range(pred.get('predicted_close_price', 0))
                 if price_range not in active_ranges:
                     continue
                 if remaining <= 0:

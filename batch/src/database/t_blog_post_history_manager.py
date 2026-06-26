@@ -7,12 +7,12 @@ class TBlogPostHistoryManager(DBManager):
         super().__init__()
 
     def exists(self, post_date: str, post_type: str = 'daily') -> bool:
-        """scheduled/dry_run/skipped のみ投稿済みとみなす。failed は再実行可能。"""
+        """scheduled/skipped のみ投稿済みとみなす。failed/dry_run は再実行可能。"""
         with self._get_connection() as conn:
             cursor = conn.execute('''
                 SELECT COUNT(*) FROM t_blog_post_history
                 WHERE post_date = ? AND post_type = ?
-                  AND status IN ('scheduled', 'dry_run', 'skipped')
+                  AND status IN ('scheduled', 'skipped')
             ''', (post_date, post_type))
             return cursor.fetchone()[0] > 0
 
