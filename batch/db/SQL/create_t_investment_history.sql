@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS t_investment_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trade_date TEXT NOT NULL,
+    analyst_name TEXT NOT NULL,
+    stock_code TEXT NOT NULL,
+    stock_name TEXT NOT NULL,
+    price_range INTEGER NOT NULL,
+    buy_price INTEGER NOT NULL,
+    sell_price INTEGER,
+    shares INTEGER NOT NULL,
+    buy_amount INTEGER NOT NULL,
+    sell_amount INTEGER,
+    profit_loss INTEGER,
+    profit_loss_rate REAL,
+    is_win INTEGER,
+    prediction_reason TEXT,
+    insert_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(trade_date, analyst_name, price_range)
+)

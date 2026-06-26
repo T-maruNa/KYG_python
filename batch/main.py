@@ -1,62 +1,219 @@
-from src.core.stock_predictor import StockPredictor
-from src.database.t_stock_result_manager import TStockResultManager
-from src.database.t_stock_predict_manager import TStockPredictManager
-from src.database.t_stock_actual_manager import TStockActualManager
-from src.core.stock_yfinance import StockYFinance
+"""
+AI Virtual Investment Battle — メインバッチ
+
+Usage:
+    python main.py            # 通常実行
+    python main.py --dry-run  # ネットワーク呼び出し・WordPress投稿をスキップ
+    python main.py --backfill # 過去30日分の株価データを取得して終了
+"""
+import sys
+import os
 from datetime import date, timedelta
 
-int_monday = 0
-int_friday = 4
+# batch/ を sys.path に追加（コマンドライン実行時用）
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# 現在の日付を取得
+from src.database.db_initializer import initialize_db
+from src.core.stock_yfinance import StockYFinance
+from src.core.stock_yfinance_full import StockYFinanceFull
+from src.core.feature_calculator import FeatureCalculator
+from src.core.stock_predictor import StockPredictor
+from src.core.virtual_trader import VirtualTrader
+from src.core.result_verifier import ResultVerifier
+from src.core.stats_aggregator import StatsAggregator
+from src.core.blog_generator import BlogGenerator
+from src.api.wordpress_client import WordPressClient
+from src.database.t_stock_actual_manager import TStockActualManager
+from src.database.t_stock_predict_manager import TStockPredictManager
+from src.database.t_blog_post_history_manager import TBlogPostHistoryManager
+
+# ------------------------------------------------------------------
+# 引数パース
+# ------------------------------------------------------------------
+DRY_RUN = '--dry-run' in sys.argv
+BACKFILL = '--backfill' in sys.argv
+
+# ------------------------------------------------------------------
+# 日付計算
+# ------------------------------------------------------------------
 today = date.today()
-# 1日分の時間差を定義
 one_day = timedelta(days=1)
 
-# 前営業日を計算
-if today.weekday() == int_monday:
-    # 月曜日の場合は金曜日が対象日
-    pre_day = today - (one_day * 3)
-else:
-    # 月曜日以外の場合は昨日が対象日
-    pre_day = today - one_day
-formatted_pre_day = pre_day.strftime("%Y-%m-%d")
+MONDAY, FRIDAY = 0, 4
 
-# 次営業日を計算
-if today.weekday() == int_friday:
-    # 金曜日の場合は月曜日が対象日
-    next_day = today + (one_day * 3)
-else:
-    # 金曜日以外の場合は明日が対象日
-    next_day = today + one_day
+prev_day = today - (one_day * 3 if today.weekday() == MONDAY else one_day)
+next_day = today + (one_day * 3 if today.weekday() == FRIDAY else one_day)
 
-formatted_next_day = next_day.strftime("%Y-%m-%d")
+formatted_today = today.strftime('%Y-%m-%d')
+formatted_prev_day = prev_day.strftime('%Y-%m-%d')
+formatted_next_day = next_day.strftime('%Y-%m-%d')
+year_month = today.strftime('%Y-%m')
+prev_year_month = prev_day.strftime('%Y-%m')
 
+is_first_business_day = (prev_day.month != today.month)
+is_last_business_day = (next_day.month != today.month)
 
-# 既存の株価データをチェック
+print(f'=== バッチ開始 {formatted_today} ===')
+print(f'  前営業日: {formatted_prev_day}')
+print(f'  次営業日: {formatted_next_day}')
+print(f'  月初判定: {is_first_business_day}  月末判定: {is_last_business_day}')
+print(f'  DRY_RUN: {DRY_RUN}')
+
+# ------------------------------------------------------------------
+# DB初期化
+# ------------------------------------------------------------------
+initialize_db()
+
+# ------------------------------------------------------------------
+# バックフィルモード
+# ------------------------------------------------------------------
+if BACKFILL:
+    print('=== バックフィル実行（過去30日） ===')
+    if not DRY_RUN:
+        StockYFinanceFull().backfill(days=30)
+    else:
+        print('[DRY-RUN] バックフィルスキップ')
+    sys.exit(0)
+
+# ------------------------------------------------------------------
+# 1. 株価データ取得
+# ------------------------------------------------------------------
 actual_manager = TStockActualManager()
-if actual_manager.get_stock_actual(date_from=formatted_pre_day):
-    print(f"デバッグ: {formatted_pre_day} の株価データは既に存在します")
-else:
-    # 現在の株価データを取得、設定(yfinance)
-    StockYFinance().set_stock_prices(formatted_pre_day)
 
-# 既存の予測データをチェック
+if actual_manager.get_stock_actual(date_from=formatted_prev_day, date_to=formatted_prev_day):
+    print(f'株価取得スキップ: {formatted_prev_day} は取得済み')
+else:
+    if not DRY_RUN:
+        print(f'株価取得: {formatted_prev_day}')
+        StockYFinance().set_stock_prices(formatted_prev_day)
+        StockYFinanceFull().set_stock_prices(formatted_prev_day)
+    else:
+        print(f'[DRY-RUN] 株価取得スキップ: {formatted_prev_day}')
+
+# ------------------------------------------------------------------
+# 2. 前回エントリーの結果検証
+# ------------------------------------------------------------------
+verifier = ResultVerifier()
+print(f'結果検証: {formatted_prev_day}')
+verifier.verify(formatted_prev_day, prev_year_month)
+
+# ------------------------------------------------------------------
+# 3. 月初リセット
+# ------------------------------------------------------------------
+trader = VirtualTrader()
+if is_first_business_day:
+    print(f'月初初期化: {year_month}')
+    trader.initialize_month(year_month)
+else:
+    # 月が変わっていなくても初回実行時に初期化されていることを保証
+    trader.initialize_month(year_month)
+
+# ------------------------------------------------------------------
+# 4. 資金残高に応じた投資可能価格帯を取得
+# ------------------------------------------------------------------
+active_ranges_by_analyst = trader.get_active_ranges_all(year_month)
+print('投資可能価格帯:')
+for name, ranges in active_ranges_by_analyst.items():
+    print(f'  {name}: {ranges}')
+
+# ------------------------------------------------------------------
+# 5. AI予測
+# ------------------------------------------------------------------
 predict_manager = TStockPredictManager()
 if predict_manager.exists_prediction(formatted_next_day):
-    print(f"デバッグ: {formatted_next_day} の予測データは既に存在します")
+    print(f'予測スキップ: {formatted_next_day} は生成済み')
 else:
-    # 株価予測を実行(AI予想)
-    StockPredictor().predict(formatted_pre_day, formatted_next_day)
+    if not DRY_RUN:
+        print(f'AI予測実行: {formatted_prev_day} → {formatted_next_day}')
+        predictor = StockPredictor()
+        predictor.predict(
+            yesterday_date=formatted_prev_day,
+            tomorrow_date=formatted_next_day,
+            active_ranges_by_analyst=active_ranges_by_analyst,
+        )
+    else:
+        print(f'[DRY-RUN] AI予測スキップ: {formatted_next_day}')
 
-# 既存の予測結果をチェック
+# ------------------------------------------------------------------
+# 6. 仮想エントリー登録
+# ------------------------------------------------------------------
+print(f'エントリー登録: {formatted_next_day}')
+trader.execute_entries(formatted_next_day, year_month)
 
-result_manager = TStockResultManager()
-no_resut_date = result_manager.get_no_result_date()
-if no_resut_date is None:
-    print(f"デバッグ: {today}の予測結果は既に存在します")
+# ------------------------------------------------------------------
+# 7. 成績集計
+# ------------------------------------------------------------------
+aggregator = StatsAggregator()
+daily_summary = aggregator.get_daily_summary(formatted_prev_day)
+ranking = aggregator.get_ranking(year_month)
+
+print(f'\n=== {formatted_prev_day} 日次結果 ===')
+for d in daily_summary:
+    sign = '+' if d['total_profit_loss'] >= 0 else ''
+    print(f'  {d["analyst_name"]}: {sign}{d["total_profit_loss"]:,}円  残高 {d["current_balance"]:,}円')
+
+print(f'\n=== {year_month} 資産ランキング ===')
+for i, r in enumerate(ranking, 1):
+    diff = r['current_balance'] - r['initial_balance']
+    print(f'  {i}位 {r["analyst_name"]}: {r["current_balance"]:,}円 ({diff:+,}円)')
+
+# 月末なら月次成績を確定
+if is_last_business_day:
+    print(f'\n月次成績確定: {year_month}')
+    aggregator.finalize_month(year_month)
+
+# ------------------------------------------------------------------
+# 8. ブログ本文生成
+# ------------------------------------------------------------------
+blog_gen = BlogGenerator()
+blog_history = TBlogPostHistoryManager()
+
+if not blog_history.exists(formatted_today, 'daily'):
+    print('\nブログ本文生成中...')
+    content = blog_gen.generate_daily(
+        result_date=formatted_prev_day,
+        trade_date=formatted_next_day,
+        year_month=year_month,
+    )
+    title = f'【AI投資バトル】{formatted_today} 結果発表'
+
+    errors = blog_gen.check(content, actual_manager.get_stock_actual(
+        date_from=formatted_next_day, date_to=formatted_next_day
+    ))
+    if errors:
+        print(f'ブログチェックNG: {errors}')
+    else:
+        # ------------------------------------------------------------------
+        # 9. WordPress投稿
+        # ------------------------------------------------------------------
+        wp = WordPressClient()
+        if wp.exists_post(formatted_today) and not DRY_RUN:
+            print(f'WordPress投稿スキップ: {formatted_today} は投稿済み')
+            blog_history.insert(formatted_today, 'daily', status='skipped')
+        else:
+            wp_id = wp.post(title, content, formatted_today, scheduled_hour=8, dry_run=DRY_RUN)
+            if wp_id is not None:
+                blog_history.insert(formatted_today, 'daily', wp_post_id=wp_id,
+                                    status='dry_run' if DRY_RUN else 'scheduled')
+                print(f'WordPress投稿完了: post_id={wp_id}')
+            else:
+                blog_history.insert(formatted_today, 'daily', status='failed')
+                print('WordPress投稿失敗')
 else:
-    # 予測の結果を保存
-    # StockResultAnalyzer().insert_prediction_results()
-    # 成績を保存
-    print(f"デバッグ: まだなんもない")
+    print(f'ブログ投稿スキップ: {formatted_today} は投稿済み')
+
+# 月末なら月次まとめ記事も投稿
+if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
+    monthly_content = blog_gen.generate_monthly(year_month)
+    if monthly_content:
+        monthly_title = f'【AI投資バトル】{year_month} 月間まとめ'
+        errors = blog_gen.check(monthly_content, [])
+        if not errors:
+            wp = WordPressClient()
+            wp_id = wp.post(monthly_title, monthly_content, formatted_today,
+                            scheduled_hour=9, dry_run=DRY_RUN)
+            blog_history.insert(formatted_today, 'monthly',
+                                wp_post_id=wp_id,
+                                status='dry_run' if DRY_RUN else 'scheduled')
+
+print(f'\n=== バッチ完了 {formatted_today} ===')
