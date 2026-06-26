@@ -9,6 +9,7 @@ Usage:
 import sys
 import os
 from datetime import date, timedelta
+import jpholiday
 
 # batch/ を sys.path に追加（コマンドライン実行時用）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -64,6 +65,17 @@ print(f'  取引日  (今日のエントリー): {formatted_trade_date}')
 print(f'  次営業日: {formatted_next_day}')
 print(f'  月初判定: {is_first_business_day}  月末判定: {is_last_business_day}')
 print(f'  DRY_RUN: {DRY_RUN}')
+
+# ------------------------------------------------------------------
+# 土日・祝日チェック（休場日はスキップ）
+# ------------------------------------------------------------------
+if not BACKFILL:
+    if today.weekday() >= 5:
+        print(f'=== 休場日スキップ (土日): {formatted_today} ===')
+        sys.exit(0)
+    if jpholiday.is_holiday(today):
+        print(f'=== 休場日スキップ (祝日: {jpholiday.is_holiday_name(today)}): {formatted_today} ===')
+        sys.exit(0)
 
 # ------------------------------------------------------------------
 # DB初期化

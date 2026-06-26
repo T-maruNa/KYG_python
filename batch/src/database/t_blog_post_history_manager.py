@@ -7,10 +7,12 @@ class TBlogPostHistoryManager(DBManager):
         super().__init__()
 
     def exists(self, post_date: str, post_type: str = 'daily') -> bool:
+        """scheduled/dry_run/skipped のみ投稿済みとみなす。failed は再実行可能。"""
         with self._get_connection() as conn:
             cursor = conn.execute('''
                 SELECT COUNT(*) FROM t_blog_post_history
                 WHERE post_date = ? AND post_type = ?
+                  AND status IN ('scheduled', 'dry_run', 'skipped')
             ''', (post_date, post_type))
             return cursor.fetchone()[0] > 0
 
@@ -20,9 +22,15 @@ class TBlogPostHistoryManager(DBManager):
         try:
             with self._get_connection() as conn:
                 conn.execute('''
-                    INSERT OR IGNORE INTO t_blog_post_history
+                    INSERT INTO t_blog_post_history
                         (post_date, post_type, title, content, wp_post_id, status)
                     VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(post_date, post_type) DO UPDATE SET
+                        title = excluded.title,
+                        content = excluded.content,
+                        wp_post_id = excluded.wp_post_id,
+                        status = excluded.status,
+                        update_date = CURRENT_TIMESTAMP
                 ''', (post_date, post_type, title, content, wp_post_id, status))
                 conn.commit()
                 return True

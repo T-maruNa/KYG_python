@@ -114,7 +114,7 @@ class StockPredictor:
                     print(f"警告: {analyst.name_jp} からの応答がありません（予算上限またはエラー）")
                     continue
 
-                self._save_predictions(result, analyst, tomorrow_date, active_ranges)
+                self._save_predictions(result, analyst, tomorrow_date, yesterday_date, active_ranges)
 
             except Exception as e:
                 print(f"エラー: {analyst.name_jp} の処理中にエラー: {e}")
@@ -129,7 +129,7 @@ class StockPredictor:
         self._predict_ritu(stock_data, tomorrow_date, ritu_ranges)
 
     def _save_predictions(self, result: str, analyst, tomorrow_date: str,
-                          active_ranges: List[int]) -> None:
+                          yesterday_date: str, active_ranges: List[int]) -> None:
         lines = [l.strip() for l in result.splitlines() if ',' in l.strip()]
         if not lines:
             print(f"警告: {analyst.name_jp} の応答に有効なCSVデータがありません")
@@ -160,7 +160,18 @@ class StockPredictor:
                 predicted_volume = float(row[6])
                 reason = row[7].strip()
 
-                price_range = self._classify_range(predicted_open)
+                # 価格帯判定は予測始値ではなく前日終値（実際の買値基準）で行う
+                actual_records = self.actual_manager.get_stock_actual(
+                    stock_code=stock_code,
+                    date_from=yesterday_date,
+                    date_to=yesterday_date,
+                )
+                if actual_records:
+                    base_price = actual_records[0].get('actual_close_price') or predicted_open
+                else:
+                    base_price = predicted_open
+
+                price_range = self._classify_range(base_price)
                 if price_range not in active_ranges:
                     continue
                 if price_range in saved_ranges:
