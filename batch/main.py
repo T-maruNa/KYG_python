@@ -54,8 +54,13 @@ prev_year_month = prev_day.strftime('%Y-%m')
 is_first_business_day = (prev_day.month != today.month)
 is_last_business_day = (next_day.month != today.month)
 
+# 記事・エントリーの対象日 = 今日（今日の取引を今日の朝に発表する）
+# 買値 = prev_day の終値、売値 = today の終値（明朝の検証で確定）
+formatted_trade_date = formatted_today
+
 print(f'=== バッチ開始 {formatted_today} ===')
-print(f'  前営業日: {formatted_prev_day}')
+print(f'  前営業日 (買値基準/検証対象): {formatted_prev_day}')
+print(f'  取引日  (今日のエントリー): {formatted_trade_date}')
 print(f'  次営業日: {formatted_next_day}')
 print(f'  月初判定: {is_first_business_day}  月末判定: {is_last_business_day}')
 print(f'  DRY_RUN: {DRY_RUN}')
@@ -121,25 +126,26 @@ for name, ranges in active_ranges_by_analyst.items():
 # 5. AI予測
 # ------------------------------------------------------------------
 predict_manager = TStockPredictManager()
-if predict_manager.exists_prediction(formatted_next_day):
-    print(f'予測スキップ: {formatted_next_day} は生成済み')
+if predict_manager.exists_prediction(formatted_trade_date):
+    print(f'予測スキップ: {formatted_trade_date} は生成済み')
 else:
     if not DRY_RUN:
-        print(f'AI予測実行: {formatted_prev_day} → {formatted_next_day}')
+        print(f'AI予測実行: {formatted_prev_day} → {formatted_trade_date}')
         predictor = StockPredictor()
         predictor.predict(
             yesterday_date=formatted_prev_day,
-            tomorrow_date=formatted_next_day,
+            tomorrow_date=formatted_trade_date,
             active_ranges_by_analyst=active_ranges_by_analyst,
         )
     else:
-        print(f'[DRY-RUN] AI予測スキップ: {formatted_next_day}')
+        print(f'[DRY-RUN] AI予測スキップ: {formatted_trade_date}')
 
 # ------------------------------------------------------------------
 # 6. 仮想エントリー登録
 # ------------------------------------------------------------------
-print(f'エントリー登録: {formatted_next_day}')
-trader.execute_entries(formatted_next_day, year_month)
+print(f'エントリー登録: {formatted_trade_date}')
+# buy_date = prev_day（前営業日終値で買ったことにする）
+trader.execute_entries(formatted_trade_date, formatted_prev_day, year_month)
 
 # ------------------------------------------------------------------
 # 7. 成績集計
@@ -173,7 +179,7 @@ if not blog_history.exists(formatted_today, 'daily'):
     print('\nブログ本文生成中...')
     content = blog_gen.generate_daily(
         result_date=formatted_prev_day,
-        trade_date=formatted_next_day,
+        trade_date=formatted_trade_date,
         year_month=year_month,
     )
     title = f'【AI投資バトル】{formatted_today} 結果発表'
@@ -188,7 +194,7 @@ if not blog_history.exists(formatted_today, 'daily'):
         # 9. WordPress投稿
         # ------------------------------------------------------------------
         wp = WordPressClient()
-        if wp.exists_post(formatted_today) and not DRY_RUN:
+        if not DRY_RUN and wp.exists_post(formatted_today):
             print(f'WordPress投稿スキップ: {formatted_today} は投稿済み')
             blog_history.insert(formatted_today, 'daily', title=title,
                                 content=content, status='skipped')

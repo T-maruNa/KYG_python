@@ -14,10 +14,11 @@ class StockYFinance:
 
     def set_stock_prices(self, target_date: str) -> None:
         """
-        指定日の株価を情報通信業の銘柄分だけ取得して t_stock_actual に保存する
+        指定日の株価を情報通信業の銘柄分だけ取得して t_stock_actual に保存する。
+        end は target_date の翌日に固定して target_date 分だけを取得する。
         """
-        today = date.today()
-        end_date = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+        target_dt = date.fromisoformat(target_date)
+        end_date = (target_dt + timedelta(days=1)).strftime("%Y-%m-%d")
 
         try:
             stocks = self.m_stock_manager.get_stock_by_industry_code_33(self.industry_code_33)
@@ -39,16 +40,23 @@ class StockYFinance:
                         print(f"スキップ: {stock_code} データなし")
                         continue
 
+                    # target_date の行だけを使う（複数日返った場合の誤保存を防ぐ）
+                    if target_date in hist.index.strftime("%Y-%m-%d"):
+                        row = hist.loc[hist.index.strftime("%Y-%m-%d") == target_date].iloc[0]
+                    else:
+                        print(f"スキップ: {stock_code} {target_date} のデータなし（最新={hist.index[-1].strftime('%Y-%m-%d')}）")
+                        continue
+
                     stock_name = self.m_stock_manager.get_stock_name(stock_code) or "不明"
                     stock_data = {
                         'date': target_date,
                         'stock_code': stock_code,
                         'stock_name': stock_name,
-                        'actual_open_price': math.trunc(hist['Open'].iloc[-1]),
-                        'actual_high_price': math.trunc(hist['High'].iloc[-1]),
-                        'actual_low_price': math.trunc(hist['Low'].iloc[-1]),
-                        'actual_close_price': math.trunc(hist['Close'].iloc[-1]),
-                        'actual_volume': math.trunc(hist['Volume'].iloc[-1]),
+                        'actual_open_price': math.trunc(row['Open']),
+                        'actual_high_price': math.trunc(row['High']),
+                        'actual_low_price': math.trunc(row['Low']),
+                        'actual_close_price': math.trunc(row['Close']),
+                        'actual_volume': math.trunc(row['Volume']),
                     }
 
                     if self.actual_manager.insert_stock_actual(stock_data, 'SYSTEM'):

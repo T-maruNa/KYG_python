@@ -9,6 +9,7 @@ from src.database.t_stock_predict_manager import TStockPredictManager
 from src.database.m_stock_manager import MStockManager
 from src.database.t_stock_actual_manager import TStockActualManager
 from src.core.ai_budget_guard import AIBudgetGuard
+from src.core.feature_calculator import FeatureCalculator
 
 
 RANGE_LIMITS = {100: 300000, 1000: 300000, 10000: 400000}
@@ -22,6 +23,7 @@ class StockPredictor:
         self.m_stock_manager = MStockManager()
         self.actual_manager = TStockActualManager()
         self.guard = AIBudgetGuard()
+        self.feature_calc = FeatureCalculator()
 
     def _build_messages(self, analyst, csv_text: str, yesterday_date: str,
                         tomorrow_date: str, active_ranges: List[int]) -> List[Dict]:
@@ -67,17 +69,28 @@ class StockPredictor:
             print(f"警告: {yesterday_date} の株価データが見つかりません")
             return
 
-        # 特徴量CSVの代わりに、とりあえず株価CSVを使う（feature_calculatorと連携）
-        csv_lines = [
-            '証券コード,銘柄名,終値,始値,高値,安値,出来高'
-        ]
-        for s in stock_data:
-            csv_lines.append(
-                f"{s['stock_code']},{s['stock_name']},{s['actual_close_price']},"
-                f"{s['actual_open_price']},{s['actual_high_price']},"
-                f"{s['actual_low_price']},{s['actual_volume']}"
-            )
-        csv_text = '\n'.join(csv_lines)
+        # 特徴量CSV（過去20営業日を使った前日比・移動平均・ボラティリティ等）
+        # アナリストごとに active_ranges が異なるため共通の全帯CSVを生成し、
+        # 各アナリストのプロンプトで有効価格帯のみ選択させる
+        all_active = sorted({
+            r
+            for ranges in (active_ranges_by_analyst or {}).values()
+            for r in ranges
+        }) or [100, 1000, 10000]
+        csv_text = self.feature_calc.build_feature_csv(
+            yesterday_date, active_ranges=all_active
+        )
+        if not csv_text:
+            # 特徴量データが不足している場合は基本OHLCにフォールバック
+            print(f"警告: {yesterday_date} の特徴量データが不足しています。基本OHLCで代替します。")
+            csv_lines = ['証券コード,銘柄名,終値,始値,高値,安値,出来高']
+            for s in stock_data:
+                csv_lines.append(
+                    f"{s['stock_code']},{s['stock_name']},{s['actual_close_price']},"
+                    f"{s['actual_open_price']},{s['actual_high_price']},"
+                    f"{s['actual_low_price']},{s['actual_volume']}"
+                )
+            csv_text = '\n'.join(csv_lines)
 
         for analyst in self.analysts:
             active_ranges = (

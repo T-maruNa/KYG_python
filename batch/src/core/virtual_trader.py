@@ -46,10 +46,12 @@ class VirtualTrader:
     def get_active_ranges_all(self, year_month: str) -> Dict[str, List[int]]:
         return {name: self.get_active_ranges(name, year_month) for name in ALL_ANALYSTS}
 
-    def execute_entries(self, trade_date: str, year_month: str) -> None:
+    def execute_entries(self, trade_date: str, buy_date: str, year_month: str) -> None:
         """
         trade_date の予測データからエントリーを作成して t_investment_history に保存する。
-        buy_price は前日（予測作成日）の終値を使う。
+
+        trade_date: 今日の売買対象日（記事に載せる「今日のエントリー」）
+        buy_date:   買値に使う終値の日付（前営業日 = prev_day）
         """
         for analyst_name in ALL_ANALYSTS:
             if self.history_manager.exists_entry(trade_date, analyst_name):
@@ -58,6 +60,7 @@ class VirtualTrader:
 
             balance = self.asset_manager.get_balance(year_month, analyst_name) or 1000000
             active_ranges = self.get_active_ranges(analyst_name, year_month)
+            remaining = balance  # 枠ごとに減算して残高超過を防ぐ
 
             predictions = self.predict_manager.get_prediction_by_date(trade_date, analyst_name)
 
@@ -65,18 +68,21 @@ class VirtualTrader:
                 price_range = self._classify_range(pred.get('predicted_close_price', 0))
                 if price_range not in active_ranges:
                     continue
+                if remaining <= 0:
+                    break
 
                 stock_code = pred['code']
                 reason = pred.get('prediction_reason', '')
 
-                # 買値は前日終値（t_stock_actual から取得）
-                buy_price = self._get_buy_price(stock_code)
+                # 買値は buy_date の終値（日付を明示して未来価格の混入を防ぐ）
+                buy_price = self._get_buy_price(stock_code, buy_date)
                 if not buy_price:
-                    print(f"警告: {stock_code} の終値が取得できません")
+                    print(f"警告: {stock_code} {buy_date} の終値が取得できません")
                     continue
 
-                limit = min(RANGE_LIMIT.get(price_range, 300000), balance)
-                shares = math.floor(limit / buy_price)
+                # 投資可能額 = 価格帯上限 と 残余資金 の小さい方
+                invest_limit = min(RANGE_LIMIT.get(price_range, 300000), remaining)
+                shares = math.floor(invest_limit / buy_price)
                 if shares <= 0:
                     continue
 
@@ -92,11 +98,19 @@ class VirtualTrader:
                     buy_amount=buy_amount,
                     prediction_reason=reason,
                 )
-                print(f"エントリー: {analyst_name} {stock_code} {shares}株 @{buy_price}円 ({price_range}円帯)")
+                remaining -= buy_amount
+                print(
+                    f"エントリー: {analyst_name} {stock_code} {shares}株 "
+                    f"@{buy_price}円 ({price_range}円帯) 残余資金:{remaining:,}円"
+                )
 
-    def _get_buy_price(self, stock_code: str) -> Optional[int]:
-        """t_stock_actual から最新の終値を返す"""
-        records = self.actual_manager.get_stock_actual(stock_code=stock_code)
+    def _get_buy_price(self, stock_code: str, buy_date: str) -> Optional[int]:
+        """t_stock_actual から buy_date 当日の終値を返す"""
+        records = self.actual_manager.get_stock_actual(
+            stock_code=stock_code,
+            date_from=buy_date,
+            date_to=buy_date,
+        )
         if records:
             return records[0].get('actual_close_price')
         return None
