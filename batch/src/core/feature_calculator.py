@@ -2,6 +2,13 @@ import math
 from typing import List, Dict, Optional
 from src.database.t_stock_actual_full_manager import TStockActualFullManager
 from src.database.m_stock_manager import MStockManager
+from config.config import config
+
+PRICE_RANGES = {
+    100: lambda c: c <= 100,
+    1000: lambda c: 100 < c <= 1000,
+    10000: lambda c: 1000 < c <= 10000,
+}
 
 
 class FeatureCalculator:
@@ -9,10 +16,12 @@ class FeatureCalculator:
         self.actual_full_manager = TStockActualFullManager()
         self.m_stock_manager = MStockManager()
 
-    def build_feature_csv(self, target_date: str) -> str:
+    def build_feature_csv(self, target_date: str,
+                          active_ranges: List[int] = None) -> str:
         """
         target_date の株価を基準に特徴量CSVを生成する。
-        t_stock_actual_full から直近25日分の履歴を使って計算する。
+        active_ranges: 含める価格帯リスト（None なら全帯）
+        価格帯ごとに MAX_CANDIDATES_PER_RANGE 銘柄に絞る。
         """
         stocks = self.m_stock_manager.get_stock_all()
         if not stocks:
@@ -24,22 +33,44 @@ class FeatureCalculator:
             "5日移動平均,20日移動平均,ボラティリティ,"
             "直近高値更新,直近安値更新"
         )
-        rows = [header]
+
+        target_ranges = active_ranges if active_ranges else list(PRICE_RANGES.keys())
+        limit = config.MAX_CANDIDATES_PER_RANGE
+
+        # 価格帯ごとにバケットを用意（出来高変化率で上位に絞る）
+        buckets: Dict[int, List[str]] = {r: [] for r in target_ranges}
 
         for stock in stocks:
             stock_code = stock['stock_code']
             history = self.actual_full_manager.get_stock_history(stock_code, target_date, limit=25)
             if len(history) < 2:
                 continue
-
-            latest = history[-1]
-            if latest['date'] != target_date:
+            if history[-1]['date'] != target_date:
                 continue
 
             stock_name = self.m_stock_manager.get_stock_name(stock_code) or "不明"
             row = self._calc_features(stock_code, stock_name, history)
-            if row:
-                rows.append(row)
+            if not row:
+                continue
+
+            close = history[-1]['close']
+            for price_range, condition in PRICE_RANGES.items():
+                if price_range in target_ranges and condition(close):
+                    buckets[price_range].append(row)
+                    break
+
+        # 各バケットを出来高変化率（8列目、0始まり）で降順ソートして上限件数に絞る
+        rows = [header]
+        for price_range in target_ranges:
+            candidates = buckets[price_range]
+            try:
+                candidates.sort(
+                    key=lambda r: float(r.split(',')[7]) if r.split(',')[7] else 0,
+                    reverse=True,
+                )
+            except (IndexError, ValueError):
+                pass
+            rows.extend(candidates[:limit])
 
         return "\n".join(rows)
 

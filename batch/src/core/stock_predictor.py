@@ -8,6 +8,7 @@ from src.characters.ichinose import IchinoseRitu
 from src.database.t_stock_predict_manager import TStockPredictManager
 from src.database.m_stock_manager import MStockManager
 from src.database.t_stock_actual_manager import TStockActualManager
+from src.core.ai_budget_guard import AIBudgetGuard
 
 
 RANGE_LIMITS = {100: 300000, 1000: 300000, 10000: 400000}
@@ -20,6 +21,7 @@ class StockPredictor:
         self.predict_manager = TStockPredictManager()
         self.m_stock_manager = MStockManager()
         self.actual_manager = TStockActualManager()
+        self.guard = AIBudgetGuard()
 
     def _build_messages(self, analyst, csv_text: str, yesterday_date: str,
                         tomorrow_date: str, active_ranges: List[int]) -> List[Dict]:
@@ -91,9 +93,12 @@ class StockPredictor:
                 messages = self._build_messages(
                     analyst, csv_text, yesterday_date, tomorrow_date, active_ranges
                 )
-                result = analyst.stock_run(messages)
+                result = self.guard.execute(
+                    analyst.stock_run, messages,
+                    call_type='prediction', model=analyst.model,
+                )
                 if not result:
-                    print(f"警告: {analyst.name_jp} からの応答がありません")
+                    print(f"警告: {analyst.name_jp} からの応答がありません（予算上限またはエラー）")
                     continue
 
                 self._save_predictions(result, analyst, tomorrow_date, active_ranges)
@@ -223,7 +228,10 @@ class StockPredictor:
                      f'セリフ以外いらない。毎回変えて。JSON配列形式で返して。例: ["理由1","理由2"]'
                  )},
             ]
-            raw = ritu.stock_run(messages)
+            raw = self.guard.execute(
+                ritu.stock_run, messages,
+                call_type='ritu_reason', model='gemini',
+            )
             import json, re
             m = re.search(r'\[.*?\]', raw, re.DOTALL)
             if m:
