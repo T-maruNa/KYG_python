@@ -1,5 +1,4 @@
 from typing import Optional, List, Dict
-from datetime import datetime
 from .db_manager import DBManager
 
 
@@ -8,26 +7,25 @@ class TCharacterAssetManager(DBManager):
         super().__init__()
 
     def initialize_month(self, year_month: str, analyst_names: List[str]) -> None:
-        """月初に各キャラクターの資産を100万円で初期化する（既存レコードは更新しない）"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             for name in analyst_names:
                 cursor.execute('''
-                    INSERT OR IGNORE INTO t_character_asset
+                    INSERT INTO t_character_asset
                         (year_month, analyst_name, initial_balance, current_balance, update_user)
-                    VALUES (?, ?, 1000000, 1000000, 'SYSTEM')
+                    VALUES (%s, %s, 1000000, 1000000, 'SYSTEM')
+                    ON CONFLICT (year_month, analyst_name) DO NOTHING
                 ''', (year_month, name))
-            conn.commit()
 
     def get_balance(self, year_month: str, analyst_name: str) -> Optional[int]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT current_balance FROM t_character_asset
-                WHERE year_month = ? AND analyst_name = ?
+                WHERE year_month = %s AND analyst_name = %s
             ''', (year_month, analyst_name))
             row = cursor.fetchone()
-            return row[0] if row else None
+            return row['current_balance'] if row else None
 
     def update_balance(self, year_month: str, analyst_name: str, delta: int) -> bool:
         try:
@@ -35,15 +33,14 @@ class TCharacterAssetManager(DBManager):
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE t_character_asset
-                    SET current_balance = current_balance + ?,
+                    SET current_balance = current_balance + %s,
                         update_date = CURRENT_TIMESTAMP,
                         update_user = 'SYSTEM'
-                    WHERE year_month = ? AND analyst_name = ?
+                    WHERE year_month = %s AND analyst_name = %s
                 ''', (delta, year_month, analyst_name))
-                conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            print(f"残高更新エラー: {e}")
+            print(f'残高更新エラー: {e}')
             return False
 
     def get_all_balances(self, year_month: str) -> List[Dict]:
@@ -52,18 +49,20 @@ class TCharacterAssetManager(DBManager):
             cursor.execute('''
                 SELECT analyst_name, initial_balance, current_balance
                 FROM t_character_asset
-                WHERE year_month = ?
+                WHERE year_month = %s
                 ORDER BY current_balance DESC
             ''', (year_month,))
             return [
-                {'analyst_name': row[0], 'initial_balance': row[1], 'current_balance': row[2]}
-                for row in cursor.fetchall()
+                {'analyst_name': r['analyst_name'], 'initial_balance': r['initial_balance'],
+                 'current_balance': r['current_balance']}
+                for r in cursor.fetchall()
             ]
 
     def exists(self, year_month: str) -> bool:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT COUNT(*) FROM t_character_asset WHERE year_month = ?
-            ''', (year_month,))
-            return cursor.fetchone()[0] > 0
+            cursor.execute(
+                'SELECT COUNT(*) FROM t_character_asset WHERE year_month = %s',
+                (year_month,)
+            )
+            return cursor.fetchone()['count'] > 0

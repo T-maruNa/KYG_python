@@ -16,21 +16,20 @@ class TMonthlyResultManager(DBManager):
                     INSERT INTO t_monthly_result
                         (year_month, analyst_name, total_profit_loss, final_balance,
                          win_count, lose_count, rank, is_mvp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(year_month, analyst_name) DO UPDATE SET
-                        total_profit_loss = excluded.total_profit_loss,
-                        final_balance = excluded.final_balance,
-                        win_count = excluded.win_count,
-                        lose_count = excluded.lose_count,
-                        rank = excluded.rank,
-                        is_mvp = excluded.is_mvp,
-                        update_date = CURRENT_TIMESTAMP
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (year_month, analyst_name) DO UPDATE SET
+                        total_profit_loss = EXCLUDED.total_profit_loss,
+                        final_balance     = EXCLUDED.final_balance,
+                        win_count         = EXCLUDED.win_count,
+                        lose_count        = EXCLUDED.lose_count,
+                        rank              = EXCLUDED.rank,
+                        is_mvp            = EXCLUDED.is_mvp,
+                        update_date       = CURRENT_TIMESTAMP
                 ''', (year_month, analyst_name, total_profit_loss, final_balance,
                       win_count, lose_count, rank, is_mvp))
-                conn.commit()
                 return True
         except Exception as e:
-            print(f"月次結果保存エラー: {e}")
+            print(f'月次結果保存エラー: {e}')
             return False
 
     def get_by_month(self, year_month: str) -> List[Dict]:
@@ -40,17 +39,17 @@ class TMonthlyResultManager(DBManager):
                 SELECT analyst_name, total_profit_loss, final_balance,
                        win_count, lose_count, rank, is_mvp
                 FROM t_monthly_result
-                WHERE year_month = ?
+                WHERE year_month = %s
                 ORDER BY final_balance DESC
             ''', (year_month,))
             return [
-                {'analyst_name': r[0], 'total_profit_loss': r[1], 'final_balance': r[2],
-                 'win_count': r[3], 'lose_count': r[4], 'rank': r[5], 'is_mvp': r[6]}
+                {'analyst_name': r['analyst_name'], 'total_profit_loss': r['total_profit_loss'],
+                 'final_balance': r['final_balance'], 'win_count': r['win_count'],
+                 'lose_count': r['lose_count'], 'rank': r['rank'], 'is_mvp': r['is_mvp']}
                 for r in cursor.fetchall()
             ]
 
     def get_cumulative_mvp(self) -> List[Dict]:
-        """累計MVP回数を取得する"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -63,15 +62,13 @@ class TMonthlyResultManager(DBManager):
                 ORDER BY mvp_count DESC, win_count DESC
             ''')
             return [
-                {'analyst_name': r[0], 'mvp_count': r[1],
-                 'win_count': r[2], 'cumulative_profit_loss': r[3]}
+                {'analyst_name': r['analyst_name'], 'mvp_count': r['mvp_count'],
+                 'win_count': r['win_count'], 'cumulative_profit_loss': r['cumulative_profit_loss']}
                 for r in cursor.fetchall()
             ]
 
     def exists(self, year_month: str) -> bool:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT COUNT(*) FROM t_monthly_result WHERE year_month = ?
-            ''', (year_month,))
-            return cursor.fetchone()[0] > 0
+            cursor.execute('SELECT COUNT(*) FROM t_monthly_result WHERE year_month = %s', (year_month,))
+            return cursor.fetchone()['count'] > 0

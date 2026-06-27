@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict
+from typing import List, Dict
 from .db_manager import DBManager
 
 
@@ -15,18 +15,17 @@ class TDailyResultManager(DBManager):
                     INSERT INTO t_daily_result
                         (result_date, analyst_name, total_profit_loss, current_balance,
                          win_count, lose_count)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(result_date, analyst_name) DO UPDATE SET
-                        total_profit_loss = excluded.total_profit_loss,
-                        current_balance = excluded.current_balance,
-                        win_count = excluded.win_count,
-                        lose_count = excluded.lose_count
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (result_date, analyst_name) DO UPDATE SET
+                        total_profit_loss = EXCLUDED.total_profit_loss,
+                        current_balance   = EXCLUDED.current_balance,
+                        win_count         = EXCLUDED.win_count,
+                        lose_count        = EXCLUDED.lose_count
                 ''', (result_date, analyst_name, total_profit_loss, current_balance,
                       win_count, lose_count))
-                conn.commit()
                 return True
         except Exception as e:
-            print(f"日次結果保存エラー: {e}")
+            print(f'日次結果保存エラー: {e}')
             return False
 
     def get_by_date(self, result_date: str) -> List[Dict]:
@@ -35,19 +34,18 @@ class TDailyResultManager(DBManager):
             cursor.execute('''
                 SELECT analyst_name, total_profit_loss, current_balance, win_count, lose_count
                 FROM t_daily_result
-                WHERE result_date = ?
+                WHERE result_date = %s
                 ORDER BY current_balance DESC
             ''', (result_date,))
             return [
-                {'analyst_name': r[0], 'total_profit_loss': r[1], 'current_balance': r[2],
-                 'win_count': r[3], 'lose_count': r[4]}
+                {'analyst_name': r['analyst_name'], 'total_profit_loss': r['total_profit_loss'],
+                 'current_balance': r['current_balance'], 'win_count': r['win_count'],
+                 'lose_count': r['lose_count']}
                 for r in cursor.fetchall()
             ]
 
     def exists(self, result_date: str) -> bool:
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT COUNT(*) FROM t_daily_result WHERE result_date = ?
-            ''', (result_date,))
-            return cursor.fetchone()[0] > 0
+            cursor.execute('SELECT COUNT(*) FROM t_daily_result WHERE result_date = %s', (result_date,))
+            return cursor.fetchone()['count'] > 0

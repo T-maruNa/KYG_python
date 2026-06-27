@@ -11,8 +11,8 @@ class Config:
     GEMINI_STOCK_API_KEY = os.getenv('GEMINI_STOCK_API_KEY')
     GEMINI_BLOG_API_KEY = os.getenv('GEMINI_BLOG_API_KEY')
 
-    # DB
-    DB = 'KYG.db'
+    # DB (PostgreSQL)
+    DATABASE_URL = os.getenv('DATABASE_URL', '')
 
     # WordPress
     WORDPRESS_BASE_URL = os.getenv('WORDPRESS_BASE_URL', '')

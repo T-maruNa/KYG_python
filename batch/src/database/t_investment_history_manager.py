@@ -13,31 +13,31 @@ class TInvestmentHistoryManager(DBManager):
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT OR IGNORE INTO t_investment_history
+                    INSERT INTO t_investment_history
                         (trade_date, analyst_name, stock_code, stock_name, price_range,
                          buy_price, shares, buy_amount, prediction_reason)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (trade_date, analyst_name, price_range) DO NOTHING
                 ''', (trade_date, analyst_name, stock_code, stock_name, price_range,
                       buy_price, shares, buy_amount, prediction_reason))
-                conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            print(f"エントリー登録エラー: {e}")
+            print(f'エントリー登録エラー: {e}')
             return False
 
     def fill_result(self, trade_date: str, analyst_name: str, price_range: int,
                     sell_price: int) -> Optional[Dict]:
-        """売値を記録し損益を計算して返す"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT buy_price, shares FROM t_investment_history
-                WHERE trade_date = ? AND analyst_name = ? AND price_range = ? AND sell_price IS NULL
+                WHERE trade_date = %s AND analyst_name = %s
+                  AND price_range = %s AND sell_price IS NULL
             ''', (trade_date, analyst_name, price_range))
             row = cursor.fetchone()
             if not row:
                 return None
-            buy_price, shares = row
+            buy_price, shares = row['buy_price'], row['shares']
             sell_amount = sell_price * shares
             buy_amount = buy_price * shares
             profit_loss = sell_amount - buy_amount
@@ -46,31 +46,25 @@ class TInvestmentHistoryManager(DBManager):
 
             cursor.execute('''
                 UPDATE t_investment_history
-                SET sell_price = ?, sell_amount = ?, profit_loss = ?,
-                    profit_loss_rate = ?, is_win = ?, update_date = CURRENT_TIMESTAMP
-                WHERE trade_date = ? AND analyst_name = ? AND price_range = ?
+                SET sell_price = %s, sell_amount = %s, profit_loss = %s,
+                    profit_loss_rate = %s, is_win = %s, update_date = CURRENT_TIMESTAMP
+                WHERE trade_date = %s AND analyst_name = %s AND price_range = %s
             ''', (sell_price, sell_amount, profit_loss, profit_loss_rate, is_win,
                   trade_date, analyst_name, price_range))
-            conn.commit()
-            return {
-                'profit_loss': profit_loss,
-                'profit_loss_rate': profit_loss_rate,
-                'is_win': is_win,
-                'stock_code': None,
-            }
+            return {'profit_loss': profit_loss, 'profit_loss_rate': profit_loss_rate, 'is_win': is_win}
 
     def get_pending(self, trade_date: str) -> List[Dict]:
-        """売値未確定のエントリーを取得する"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT analyst_name, stock_code, stock_name, price_range, buy_price, shares
                 FROM t_investment_history
-                WHERE trade_date = ? AND sell_price IS NULL
+                WHERE trade_date = %s AND sell_price IS NULL
             ''', (trade_date,))
             return [
-                {'analyst_name': r[0], 'stock_code': r[1], 'stock_name': r[2],
-                 'price_range': r[3], 'buy_price': r[4], 'shares': r[5]}
+                {'analyst_name': r['analyst_name'], 'stock_code': r['stock_code'],
+                 'stock_name': r['stock_name'], 'price_range': r['price_range'],
+                 'buy_price': r['buy_price'], 'shares': r['shares']}
                 for r in cursor.fetchall()
             ]
 
@@ -80,23 +74,22 @@ class TInvestmentHistoryManager(DBManager):
             if analyst_name:
                 cursor.execute('''
                     SELECT * FROM t_investment_history
-                    WHERE trade_date = ? AND analyst_name = ?
+                    WHERE trade_date = %s AND analyst_name = %s
                     ORDER BY price_range
                 ''', (trade_date, analyst_name))
             else:
                 cursor.execute('''
                     SELECT * FROM t_investment_history
-                    WHERE trade_date = ?
+                    WHERE trade_date = %s
                     ORDER BY analyst_name, price_range
                 ''', (trade_date,))
-            cols = [d[0] for d in cursor.description]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return [dict(r) for r in cursor.fetchall()]
 
     def exists_entry(self, trade_date: str, analyst_name: str) -> bool:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT COUNT(*) FROM t_investment_history
-                WHERE trade_date = ? AND analyst_name = ?
+                WHERE trade_date = %s AND analyst_name = %s
             ''', (trade_date, analyst_name))
-            return cursor.fetchone()[0] > 0
+            return cursor.fetchone()['count'] > 0
