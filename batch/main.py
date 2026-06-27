@@ -165,16 +165,13 @@ predict_manager = TStockPredictManager()
 if predict_manager.exists_prediction(formatted_trade_date):
     print(f'予測スキップ: {formatted_trade_date} は生成済み')
 else:
-    if not DRY_RUN:
-        print(f'AI予測実行: {formatted_prev_day} → {formatted_trade_date}')
-        predictor = StockPredictor()
-        predictor.predict(
-            yesterday_date=formatted_prev_day,
-            tomorrow_date=formatted_trade_date,
-            active_ranges_by_analyst=active_ranges_by_analyst,
-        )
-    else:
-        print(f'[DRY-RUN] AI予測スキップ: {formatted_trade_date}')
+    print(f'AI予測実行: {formatted_prev_day} → {formatted_trade_date}')
+    predictor = StockPredictor()
+    predictor.predict(
+        yesterday_date=formatted_prev_day,
+        tomorrow_date=formatted_trade_date,
+        active_ranges_by_analyst=active_ranges_by_analyst,
+    )
 
 # ------------------------------------------------------------------
 # 6. 仮想エントリー登録
@@ -225,19 +222,22 @@ if not blog_history.exists(formatted_today, 'daily'):
     ))
     if errors:
         print(f'ブログチェックNG: {errors}')
+    elif DRY_RUN:
+        # DRY-RUN: 本文をコンソールに出力してWP投稿はスキップ
+        print('\n' + '=' * 60)
+        print(f'[DRY-RUN] ブログ本文プレビュー: {title}')
+        print('=' * 60)
+        print(content)
+        print('=' * 60)
     else:
         # ------------------------------------------------------------------
         # 9. WordPress投稿
         # ------------------------------------------------------------------
         wp = WordPressClient()
-        if not DRY_RUN and wp.exists_post(formatted_today):
+        if wp.exists_post(formatted_today):
             print(f'WordPress投稿スキップ: {formatted_today} は投稿済み')
             blog_history.insert(formatted_today, 'daily', title=title,
                                 content=content, status='skipped')
-        elif DRY_RUN:
-            wp_id = wp.post(title, content, formatted_today, dry_run=True)
-            print(f'[DRY-RUN] WordPress投稿シミュレート完了: post_id={wp_id}')
-            # DRY_RUN 時は履歴に書かない（本番実行を妨げないため）
         else:
             wp_id = wp.post(title, content, formatted_today, dry_run=False)
             if wp_id is not None:
@@ -259,18 +259,20 @@ if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
         monthly_title = f'【AI投資バトル】{year_month} 月間まとめ'
         errors = blog_gen.check(monthly_content, [])
         if not errors:
-            wp = WordPressClient()
-            if not DRY_RUN:
+            if DRY_RUN:
+                print('\n' + '=' * 60)
+                print(f'[DRY-RUN] 月次記事プレビュー: {monthly_title}')
+                print('=' * 60)
+                print(monthly_content)
+                print('=' * 60)
+            else:
+                wp = WordPressClient()
                 wp_id = wp.post(monthly_title, monthly_content, formatted_today,
                                 dry_run=False)
                 blog_history.insert(formatted_today, 'monthly',
                                     title=monthly_title, content=monthly_content,
                                     wp_post_id=wp_id,
                                     status='scheduled')
-            else:
-                wp.post(monthly_title, monthly_content, formatted_today,
-                        scheduled_hour=9, dry_run=True)
-                print('[DRY-RUN] 月次記事投稿シミュレート完了')
 
 # ------------------------------------------------------------------
 # 10. AI予算使用状況を表示
