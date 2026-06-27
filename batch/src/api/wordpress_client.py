@@ -21,9 +21,10 @@ class WordPressClient:
     # ------------------------------------------------------------------
 
     def post(self, title: str, content: str, post_date: str,
-             scheduled_hour: int = 8, dry_run: bool = False) -> Optional[int]:
+             scheduled_hour: int = None, dry_run: bool = False) -> Optional[int]:
         """
-        記事を投稿する。dry_run=True の場合はAPIを呼ばずにチェックだけ行う。
+        記事を即公開で投稿する。dry_run=True の場合はAPIを呼ばずにチェックだけ行う。
+        scheduled_hour を指定した場合は予約投稿（後方互換のため残している）。
 
         Returns:
             WordPress post ID（dry_run時は0）、失敗時は None
@@ -33,20 +34,21 @@ class WordPressClient:
             print(f'投稿前チェックNG: {errors}')
             return None
 
-        # 8時予約投稿用の日時（ISO 8601 形式、UTC+9 = JST）
-        scheduled_dt = f'{post_date}T{scheduled_hour:02d}:00:00+09:00'
+        if scheduled_hour is not None:
+            status = 'future'
+            date_param = f'{post_date}T{scheduled_hour:02d}:00:00+09:00'
+        else:
+            status = 'publish'
+            date_param = None
 
-        payload = {
-            'title': title,
-            'content': content,
-            'status': 'future',
-            'date': scheduled_dt,
-        }
+        payload = {'title': title, 'content': content, 'status': status}
+        if date_param:
+            payload['date'] = date_param
 
         if dry_run:
             print('[DRY-RUN] 投稿内容:')
             print(f'  タイトル : {title}')
-            print(f'  予約日時 : {scheduled_dt}')
+            print(f'  ステータス: {status}' + (f'  予約={date_param}' if date_param else '  即公開'))
             print(f'  本文文字数: {len(content)}')
             return 0
 
@@ -59,7 +61,8 @@ class WordPressClient:
             )
             resp.raise_for_status()
             wp_id = resp.json().get('id')
-            print(f'WordPress投稿成功: ID={wp_id}  予約={scheduled_dt}')
+            label = f'予約={date_param}' if date_param else '即公開'
+            print(f'WordPress投稿成功: ID={wp_id}  {label}')
             return wp_id
         except requests.RequestException as e:
             print(f'WordPress投稿エラー: {e}')

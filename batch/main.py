@@ -235,11 +235,11 @@ if not blog_history.exists(formatted_today, 'daily'):
             blog_history.insert(formatted_today, 'daily', title=title,
                                 content=content, status='skipped')
         elif DRY_RUN:
-            wp_id = wp.post(title, content, formatted_today, scheduled_hour=8, dry_run=True)
+            wp_id = wp.post(title, content, formatted_today, dry_run=True)
             print(f'[DRY-RUN] WordPress投稿シミュレート完了: post_id={wp_id}')
             # DRY_RUN 時は履歴に書かない（本番実行を妨げないため）
         else:
-            wp_id = wp.post(title, content, formatted_today, scheduled_hour=8, dry_run=False)
+            wp_id = wp.post(title, content, formatted_today, dry_run=False)
             if wp_id is not None:
                 blog_history.insert(formatted_today, 'daily', title=title,
                                     content=content, wp_post_id=wp_id,
@@ -262,7 +262,7 @@ if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
             wp = WordPressClient()
             if not DRY_RUN:
                 wp_id = wp.post(monthly_title, monthly_content, formatted_today,
-                                scheduled_hour=9, dry_run=False)
+                                dry_run=False)
                 blog_history.insert(formatted_today, 'monthly',
                                     title=monthly_title, content=monthly_content,
                                     wp_post_id=wp_id,
