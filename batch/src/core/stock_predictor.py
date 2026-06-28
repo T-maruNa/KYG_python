@@ -13,7 +13,7 @@ from src.core.feature_calculator import FeatureCalculator
 
 
 RANGE_LIMITS = {100: 300000, 1000: 300000, 10000: 400000}
-RANGE_LABEL = {100: '低位株(100円以下)', 1000: '中位株(101〜1000円)', 10000: '大型株(1001〜10000円)'}
+RANGE_LABEL = {100: '小型株(100円以下)', 1000: '中型株(101〜1000円)', 10000: '大型株(1001〜10000円)'}
 
 
 class StockPredictor:
