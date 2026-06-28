@@ -200,15 +200,12 @@ class BlogGenerator:
                 continue
             html += (
                 f'<h3>{profile["name_jp"]}</h3>\n'
-                f'<table><tr><th>銘柄コード</th><th>銘柄名</th>'
-                f'<th>価格帯</th><th>株数</th><th>予想理由</th></tr>\n'
+                f'<table><tr><th>銘柄コード</th><th>銘柄名</th><th>予想理由</th></tr>\n'
             )
             for e in ae:
                 html += (
                     f'<tr><td>{e["stock_code"]}</td>'
                     f'<td>{e["stock_name"]}</td>'
-                    f'<td>{e["price_range"]}円帯</td>'
-                    f'<td>{e["shares"]}株</td>'
                     f'<td>{e.get("prediction_reason", "")}</td></tr>\n'
                 )
             html += '</table>\n'
