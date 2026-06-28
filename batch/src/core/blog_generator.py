@@ -75,7 +75,8 @@ class BlogGenerator:
     # 日次記事
     # ------------------------------------------------------------------
 
-    def generate_daily(self, result_date: str, trade_date: str, year_month: str) -> str:
+    def generate_daily(self, result_date: str, trade_date: str, year_month: str,
+                       ranking: List[Dict] = None) -> str:
         """
         result_date: 結果確定日（前営業日の実価格が確定した日）
         trade_date:  本日のエントリー対象日（次営業日）
@@ -87,9 +88,20 @@ class BlogGenerator:
         today_entries = self.history_manager.get_by_date(trade_date)
         cumulative_mvp = self.monthly_manager.get_cumulative_mvp()
 
+        ranking_by_analyst = {}
+        if ranking:
+            total = len(ranking)
+            first_balance = ranking[0]['current_balance'] if ranking else 0
+            for i, r in enumerate(ranking):
+                ranking_by_analyst[r['analyst_name']] = {
+                    'rank': i + 1,
+                    'total': total,
+                    'gap_from_first': first_balance - r['current_balance'],
+                }
+
         sections = [
-            self._section_result(result_date, daily, prev_entries),
-            self._section_ranking(ranking, year_month),
+            self._section_result(result_date, daily, prev_entries, ranking_by_analyst),
+            self._section_ranking(ranking or [], year_month),
             self._section_today_entry(trade_date, today_entries),
             self._section_cumulative(cumulative_mvp),
             DISCLAIMER,
@@ -141,7 +153,7 @@ class BlogGenerator:
     # ------------------------------------------------------------------
 
     def _section_result(self, result_date: str, daily: List[Dict],
-                        entries: List[Dict]) -> str:
+                        entries: List[Dict], ranking_by_analyst: Dict = None) -> str:
         if not daily:
             return f'<h2>{result_date} の結果</h2><p>データがありません。</p>'
 
@@ -162,7 +174,8 @@ class BlogGenerator:
             avg_rate = sum(pl_rates) / len(pl_rates) if pl_rates else 0
             expression = get_expression(avg_rate)
             img = _image_url(name, expression)
-            comment = self._character_comment(name, profile['personality'], profit, win, lose)
+            ri = (ranking_by_analyst or {}).get(name)
+            comment = self._character_comment(name, profile['personality'], profit, win, lose, ri)
 
             html += (
                 f'<div class="character-result">\n'
@@ -255,7 +268,7 @@ class BlogGenerator:
             cursor.execute('''
                 SELECT stock_code, stock_name, analyst_name, profit_loss, profit_loss_rate
                 FROM t_investment_history
-                WHERE trade_date LIKE ? AND sell_price IS NOT NULL AND profit_loss IS NOT NULL
+                WHERE trade_date LIKE %s AND sell_price IS NOT NULL AND profit_loss IS NOT NULL
                 ORDER BY profit_loss DESC
                 LIMIT 1
             ''', (f'{year_month}%',))
@@ -264,7 +277,7 @@ class BlogGenerator:
             cursor.execute('''
                 SELECT stock_code, stock_name, analyst_name, profit_loss, profit_loss_rate
                 FROM t_investment_history
-                WHERE trade_date LIKE ? AND sell_price IS NOT NULL AND profit_loss IS NOT NULL
+                WHERE trade_date LIKE %s AND sell_price IS NOT NULL AND profit_loss IS NOT NULL
                 ORDER BY profit_loss ASC
                 LIMIT 1
             ''', (f'{year_month}%',))
@@ -286,17 +299,31 @@ class BlogGenerator:
         return html
 
     def _character_comment(self, analyst_name: str, personality: str,
-                           profit: int, win: int, lose: int) -> str:
+                           profit: int, win: int, lose: int,
+                           ranking_info: Dict = None) -> str:
         sign = '+' if profit >= 0 else ''
         try:
             profile = ANALYST_PROFILES.get(analyst_name, {'name_jp': analyst_name})
+
+            rank_context = ''
+            if ranking_info:
+                rank = ranking_info.get('rank', 1)
+                total = ranking_info.get('total', 1)
+                gap = ranking_info.get('gap_from_first', 0)
+                if rank == 1:
+                    rank_context = f'現在ランキング1位です。'
+                else:
+                    rank_context = f'現在ランキング{rank}位（1位との差：{gap:,}円）です。'
+
             messages = [
                 {'role': 'system',
                  'content': f'あなたは{profile["name_jp"]}です。{personality}'},
                 {'role': 'user',
                  'content': (
                      f'今日の投資結果は{sign}{profit:,}円（{win}勝{lose}敗）でした。'
+                     f'{rank_context}'
                      f'キャラクターらしい短いコメントを1〜2文で返してください。'
+                     f'順位についても触れてください。'
                      f'投資助言・断言表現は避けてください。'
                  )},
             ]

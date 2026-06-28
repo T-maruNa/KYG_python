@@ -171,6 +171,7 @@ else:
         yesterday_date=formatted_prev_day,
         tomorrow_date=formatted_trade_date,
         active_ranges_by_analyst=active_ranges_by_analyst,
+        ranking_by_analyst=ranking_by_analyst,
     )
 
 # ------------------------------------------------------------------
@@ -197,6 +198,17 @@ for i, r in enumerate(ranking, 1):
     diff = r['current_balance'] - r['initial_balance']
     print(f'  {i}位 {r["analyst_name"]}: {r["current_balance"]:,}円 ({diff:+,}円)')
 
+# ランキング情報をアナリスト別に整理（予測・コメントで使用）
+_first_balance = ranking[0]['current_balance'] if ranking else 0
+ranking_by_analyst = {
+    r['analyst_name']: {
+        'rank': i + 1,
+        'total': len(ranking),
+        'gap_from_first': _first_balance - r['current_balance'],
+    }
+    for i, r in enumerate(ranking)
+}
+
 # 月末なら月次成績を確定
 if is_last_business_day:
     print(f'\n月次成績確定: {year_month}')
@@ -214,6 +226,7 @@ if not blog_history.exists(formatted_today, 'daily'):
         result_date=formatted_prev_day,
         trade_date=formatted_trade_date,
         year_month=year_month,
+        ranking=ranking,
     )
     title = f'【AI投資バトル】{formatted_today} 結果発表'
 

@@ -26,10 +26,33 @@ class StockPredictor:
         self.feature_calc = FeatureCalculator()
 
     def _build_messages(self, analyst, csv_text: str, yesterday_date: str,
-                        tomorrow_date: str, active_ranges: List[int]) -> List[Dict]:
+                        tomorrow_date: str, active_ranges: List[int],
+                        ranking_info: Dict = None) -> List[Dict]:
         range_desc = '\n'.join(
             f'・{RANGE_LABEL[r]}から1銘柄' for r in active_ranges
         )
+
+        strategy_hint = ''
+        if ranking_info:
+            rank = ranking_info.get('rank', 1)
+            total = ranking_info.get('total', 1)
+            gap = ranking_info.get('gap_from_first', 0)
+            if rank == 1:
+                strategy_hint = (
+                    '\nあなたは現在1位です。リードを守るため、安定・低リスクな銘柄を優先してください。'
+                )
+            elif rank == total or gap > 100000:
+                strategy_hint = (
+                    f'\nあなたは現在{rank}位（最下位付近）で、1位との差は{gap:,}円です。'
+                    f'逆転するためにはギャンブル的な高ボラティリティ銘柄を狙ってください。'
+                    f'リスクを恐れず、大きく動きそうな銘柄を選んでください。'
+                )
+            else:
+                strategy_hint = (
+                    f'\nあなたは現在{rank}位で、1位との差は{gap:,}円です。'
+                    f'やや攻めの姿勢で、上昇余地の大きい銘柄を選んでください。'
+                )
+
         return [
             {
                 'role': 'system',
@@ -42,7 +65,8 @@ class StockPredictor:
                 'content': (
                     f'以下のCSVは{yesterday_date}の株価と特徴量です：\n{csv_text}\n\n'
                     f'{tomorrow_date}の終値が最も上がりそうな銘柄を予測してください。\n'
-                    f'あなたの専門分野である{analyst.style}の観点から、特に{analyst.focus}に注目して分析してください。\n\n'
+                    f'あなたの専門分野である{analyst.style}の観点から、特に{analyst.focus}に注目して分析してください。'
+                    f'{strategy_hint}\n\n'
                     f'以下の条件で銘柄を選んでください：\n{range_desc}\n'
                     f'合計{len(active_ranges)}銘柄を選んでください。\n'
                     f'CSVに記載されていない銘柄は選ばないでください。\n'
@@ -57,7 +81,8 @@ class StockPredictor:
         ]
 
     def predict(self, yesterday_date: str, tomorrow_date: str,
-                active_ranges_by_analyst: Dict[str, List[int]] = None) -> None:
+                active_ranges_by_analyst: Dict[str, List[int]] = None,
+                ranking_by_analyst: Dict[str, Dict] = None) -> None:
         """
         株価予測を実行してDBに保存する。
 
@@ -103,8 +128,12 @@ class StockPredictor:
                 continue
 
             try:
+                ranking_info = (
+                    ranking_by_analyst.get(analyst.name) if ranking_by_analyst else None
+                )
                 messages = self._build_messages(
-                    analyst, csv_text, yesterday_date, tomorrow_date, active_ranges
+                    analyst, csv_text, yesterday_date, tomorrow_date, active_ranges,
+                    ranking_info=ranking_info,
                 )
                 result = self.guard.execute(
                     analyst.stock_run, messages,
