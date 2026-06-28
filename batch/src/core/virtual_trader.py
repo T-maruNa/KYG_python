@@ -83,7 +83,7 @@ class VirtualTrader:
 
                 # 投資可能額 = 価格帯上限 と 残余資金 の小さい方
                 invest_limit = min(RANGE_LIMIT.get(price_range, 300000), remaining)
-                shares = math.floor(invest_limit / buy_price)
+                shares = math.floor(invest_limit / buy_price / 100) * 100
                 if shares <= 0:
                     continue
 
