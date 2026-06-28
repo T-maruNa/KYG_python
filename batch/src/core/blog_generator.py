@@ -190,9 +190,11 @@ class BlogGenerator:
 
     def _section_ranking(self, ranking: List[Dict], year_month: str) -> str:
         html = f'<h2>{year_month} 現在資産ランキング</h2>\n<ol>\n'
-        for r in ranking:
+        total = len(ranking)
+        first_balance = ranking[0]['current_balance'] if ranking else 0
+        for i, r in enumerate(ranking):
             name = r['analyst_name']
-            profile = ANALYST_PROFILES.get(name, {'name_jp': name})
+            profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'personality': ''})
             diff = r['current_balance'] - r['initial_balance']
             sign = '+' if diff >= 0 else ''
             html += (
@@ -200,6 +202,15 @@ class BlogGenerator:
                 f'({sign}{diff:,}円)</li>\n'
             )
         html += '</ol>\n'
+
+        for i, r in enumerate(ranking):
+            name = r['analyst_name']
+            profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'personality': ''})
+            gap = first_balance - r['current_balance']
+            rank_info = {'rank': i + 1, 'total': total, 'gap_from_first': gap}
+            comment = self._ranking_comment(name, profile['personality'], i + 1, total, gap)
+            html += f'<p><strong>{profile["name_jp"]}</strong>：{comment}</p>\n'
+
         return html
 
     def _section_today_entry(self, trade_date: str, entries: List[Dict]) -> str:
@@ -226,6 +237,11 @@ class BlogGenerator:
                     f'<td>{e.get("prediction_reason", "")}</td></tr>\n'
                 )
             html += f'</table>\n<p>合計　約{round(total / 10000)}万円</p>\n'
+
+            stock_names = [e['stock_name'] for e in ae]
+            comment = self._entry_comment(analyst_name, profile['personality'], stock_names)
+            html += f'<blockquote>{comment}</blockquote>\n'
+
         return html
 
     def _section_cumulative(self, cumulative_mvp: List[Dict]) -> str:
@@ -334,3 +350,52 @@ class BlogGenerator:
             return result.strip() if result else f'今日は{sign}{profit:,}円でした。'
         except Exception:
             return f'今日は{sign}{profit:,}円でした。'
+
+    def _ranking_comment(self, analyst_name: str, personality: str,
+                         rank: int, total: int, gap_from_first: int) -> str:
+        try:
+            profile = ANALYST_PROFILES.get(analyst_name, {'name_jp': analyst_name})
+            if rank == 1:
+                rank_context = f'現在{total}人中1位です。'
+            else:
+                rank_context = f'現在{total}人中{rank}位で、1位との差は{gap_from_first:,}円です。'
+            messages = [
+                {'role': 'system',
+                 'content': f'あなたは{profile["name_jp"]}です。{personality}'},
+                {'role': 'user',
+                 'content': (
+                     f'{rank_context}'
+                     f'現在の順位についてキャラクターらしい一言コメントを1文で返してください。'
+                     f'投資助言・断言表現は避けてください。'
+                 )},
+            ]
+            result = self.guard.execute(
+                self.gemini.execute_chat, messages,
+                call_type='ranking_comment', model='gemini',
+            )
+            return result.strip() if result else rank_context
+        except Exception:
+            return f'{rank}位です。'
+
+    def _entry_comment(self, analyst_name: str, personality: str,
+                       stock_names: List[str]) -> str:
+        try:
+            profile = ANALYST_PROFILES.get(analyst_name, {'name_jp': analyst_name})
+            stocks_str = '、'.join(stock_names)
+            messages = [
+                {'role': 'system',
+                 'content': f'あなたは{profile["name_jp"]}です。{personality}'},
+                {'role': 'user',
+                 'content': (
+                     f'今日のエントリー銘柄は{stocks_str}です。'
+                     f'選んだ理由や意気込みをキャラクターらしく1〜2文で話してください。'
+                     f'投資助言・断言表現は避けてください。'
+                 )},
+            ]
+            result = self.guard.execute(
+                self.gemini.execute_chat, messages,
+                call_type='entry_comment', model='gemini',
+            )
+            return result.strip() if result else f'今日は{stocks_str}に注目しています。'
+        except Exception:
+            return f'今日の注目銘柄は{", ".join(stock_names)}です。'
