@@ -202,15 +202,17 @@ class BlogGenerator:
                 f'<h3>{profile["name_jp"]}</h3>\n'
                 f'<table><tr><th>銘柄コード</th><th>銘柄名</th><th>購入金額</th><th>予想理由</th></tr>\n'
             )
+            total = 0
             for e in ae:
                 approx_man = round(e.get("buy_amount", 0) / 10000)
+                total += e.get("buy_amount", 0)
                 html += (
                     f'<tr><td>{e["stock_code"]}</td>'
                     f'<td>{e["stock_name"]}</td>'
                     f'<td>約{approx_man}万円</td>'
                     f'<td>{e.get("prediction_reason", "")}</td></tr>\n'
                 )
-            html += '</table>\n'
+            html += f'</table>\n<p>合計　約{round(total / 10000)}万円</p>\n'
         return html
 
     def _section_cumulative(self, cumulative_mvp: List[Dict]) -> str:
