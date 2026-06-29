@@ -54,10 +54,22 @@ CHAR_IMAGES = {
     'ritu':  lambda: config.IMG_RITU,
 }
 
-def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image') -> str:
-    if not url:
-        return ''
-    return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
+def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image',
+                      image_type: str = '') -> str:
+    if url:
+        return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
+    label = {
+        'morning_scene':         '☀️ 朝の作戦会議 3人集合画像（自動生成）',
+        'morning_sub_scene':     '💬 今朝の3人 サブ画像（自動生成）',
+        'hero_scene':            '⭐ 今日の主役キャラ画像（自動生成）',
+        'night_reflection_scene':'🌙 今日の反省会 3人集合画像（自動生成）',
+        'highlight_scene':       '✨ 今日の名場面 挿絵（自動生成）',
+    }.get(image_type, f'🖼️ {alt}（自動生成）')
+    return (
+        f'<div class="{css_class} scene-image-placeholder">'
+        f'<span class="scene-placeholder-label">{label}</span>'
+        f'</div>\n'
+    )
 
 FORBIDDEN_PHRASES = [
     '絶対', '確実', '必ず上がる', '買うべき', '儲かる', '保証', '推奨銘柄',
@@ -137,8 +149,11 @@ BATTLE_CSS = '''<style>
 .scene-image{margin:14px 0;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(80,60,90,.10);}
 .scene-image img{width:100%;height:auto;display:block;}
 .scene-image-main{margin:16px 0 20px;}
+.scene-image-sub{margin:10px 0 16px;}
 .hero-image{margin:12px 0 16px;max-width:420px;}
 .hero-image img{border-radius:16px;}
+.scene-image-placeholder{display:flex;align-items:center;justify-content:center;min-height:80px;background:repeating-linear-gradient(45deg,#f8f4fc,#f8f4fc 8px,#f2edf8 8px,#f2edf8 16px);border:2px dashed #d8c8e8;border-radius:16px;box-shadow:none;}
+.scene-placeholder-label{font-size:.82rem;color:#a088b0;letter-spacing:.04em;}
 .strategy-talk h2::before{content:"☀️ ";font-style:normal;}
 .spotlight-card{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:18px;padding:16px 20px;margin:16px 0;border:1px solid #f0ddea;}
 .spotlight-card h3::before{content:"👀 ";}
@@ -411,7 +426,7 @@ class BlogGenerator:
             '<section class="strategy-talk">\n'
             '<h2>☀️ 今日の作戦会議</h2>\n'
         )
-        html += _scene_image_html(config.IMG_MORNING_SCENE, '朝の作戦会議をする3人', 'scene-image scene-image-main')
+        html += _scene_image_html(config.IMG_MORNING_SCENE, '朝の作戦会議をする3人', 'scene-image scene-image-main', 'morning_scene')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')
@@ -429,6 +444,7 @@ class BlogGenerator:
         if not talk_lines:
             return ''
         html = '<section class="strategy-talk morning-three">\n<h2>💬 今朝の3人</h2>\n'
+        html += _scene_image_html('', '今朝の3人', 'scene-image scene-image-sub', 'morning_sub_scene')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')
@@ -464,6 +480,7 @@ class BlogGenerator:
             '<section class="push-points">\n'
             '<h2>✨ 今日の名場面</h2>\n'
         )
+        html += _scene_image_html('', '今日の名場面', 'scene-image scene-image-sub', 'highlight_scene')
         for item in push_points:
             name = item.get('name', '')
             point = item.get('point', '')
@@ -489,7 +506,7 @@ class BlogGenerator:
 
         intro = self._generate_hero_intro(name, profile['personality'], profit, win, lose)
 
-        hero_img = _scene_image_html(CHAR_IMAGES.get(name, lambda: '')(), f'{profile["name_short"]}', 'scene-image hero-image')
+        hero_img = _scene_image_html(CHAR_IMAGES.get(name, lambda: '')(), f'{profile["name_short"]}', 'scene-image hero-image', 'hero_scene')
         return (
             f'<section class="today-hero character-{name}">\n'
             f'  <p class="section-label">今日の主役</p>\n'
@@ -650,7 +667,7 @@ class BlogGenerator:
             '<section class="girls-talk">\n'
             '<h2>🌙 今日の反省会</h2>\n'
         )
-        html += _scene_image_html(config.IMG_EVENING_SCENE, '夜の反省会をする3人', 'scene-image scene-image-main')
+        html += _scene_image_html(config.IMG_EVENING_SCENE, '夜の反省会をする3人', 'scene-image scene-image-main', 'night_reflection_scene')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')

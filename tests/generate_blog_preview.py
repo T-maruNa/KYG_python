@@ -73,10 +73,22 @@ SCENE_IMAGES = {
     'ritu':  os.getenv('IMG_RITU', ''),                     # 律のキャラ画像
 }
 
-def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image') -> str:
-    if not url:
-        return ''
-    return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
+def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image',
+                      image_type: str = '') -> str:
+    if url:
+        return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
+    label = {
+        'morning_scene':          '☀️ 朝の作戦会議 3人集合画像（自動生成）',
+        'morning_sub_scene':      '💬 今朝の3人 サブ画像（自動生成）',
+        'hero_scene':             '⭐ 今日の主役キャラ画像（自動生成）',
+        'night_reflection_scene': '🌙 今日の反省会 3人集合画像（自動生成）',
+        'highlight_scene':        '✨ 今日の名場面 挿絵（自動生成）',
+    }.get(image_type, f'🖼️ {alt}（自動生成）')
+    return (
+        f'<div class="{css_class} scene-image-placeholder">'
+        f'<span class="scene-placeholder-label">{label}</span>'
+        f'</div>\n'
+    )
 
 # ---------------------------------------------------------------------------
 # キャラクター定義（blog_generator.py と同じ）
@@ -199,8 +211,11 @@ BATTLE_CSS = '''<style>
 .scene-image{margin:14px 0;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(80,60,90,.10);}
 .scene-image img{width:100%;height:auto;display:block;}
 .scene-image-main{margin:16px 0 20px;}
+.scene-image-sub{margin:10px 0 16px;}
 .hero-image{margin:12px 0 16px;max-width:420px;}
 .hero-image img{border-radius:16px;}
+.scene-image-placeholder{display:flex;align-items:center;justify-content:center;min-height:80px;background:repeating-linear-gradient(45deg,#f8f4fc,#f8f4fc 8px,#f2edf8 8px,#f2edf8 16px);border:2px dashed #d8c8e8;border-radius:16px;box-shadow:none;}
+.scene-placeholder-label{font-size:.82rem;color:#a088b0;letter-spacing:.04em;}
 
 /* ランキング */
 .ranking-card{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:12px 14px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);background-image:none;}
@@ -511,7 +526,7 @@ def generate_push_points() -> list:
 def section_today_hero(hero: dict, intro: str) -> str:
     name = hero['analyst_name']
     profile = ANALYST_PROFILES[name]
-    hero_img = _scene_image_html(SCENE_IMAGES.get(name, ''), f'{profile["name_short"]}', 'scene-image hero-image')
+    hero_img = _scene_image_html(SCENE_IMAGES.get(name, ''), f'{profile["name_short"]}', 'scene-image hero-image', 'hero_scene')
     return (
         f'<section class="today-hero character-{name}">\n'
         f'  <p class="section-label">今日の主役</p>\n'
@@ -670,7 +685,7 @@ def section_today_entry() -> str:
 
 def section_strategy_talk(talk_lines: list) -> str:
     html = '<section class="strategy-talk">\n<h2>☀️ 今日の作戦会議</h2>\n'
-    html += _scene_image_html(SCENE_IMAGES['morning_scene'], '朝の作戦会議をする3人', 'scene-image scene-image-main')
+    html += _scene_image_html(SCENE_IMAGES['morning_scene'], '朝の作戦会議をする3人', 'scene-image scene-image-main', 'morning_scene')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -681,6 +696,7 @@ def section_strategy_talk(talk_lines: list) -> str:
 
 def section_morning_three(talk_lines: list) -> str:
     html = '<section class="strategy-talk morning-three">\n<h2>💬 今朝の3人</h2>\n'
+    html += _scene_image_html('', '今朝の3人', 'scene-image scene-image-sub', 'morning_sub_scene')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -704,7 +720,7 @@ def section_morning_link(url: str = None) -> str:
 
 def section_girls_talk(talk_lines: list) -> str:
     html = '<section class="girls-talk">\n<h2>🌙 今日の反省会</h2>\n'
-    html += _scene_image_html(SCENE_IMAGES['evening_scene'], '夜の反省会をする3人', 'scene-image scene-image-main')
+    html += _scene_image_html(SCENE_IMAGES['evening_scene'], '夜の反省会をする3人', 'scene-image scene-image-main', 'night_reflection_scene')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -715,6 +731,7 @@ def section_girls_talk(talk_lines: list) -> str:
 
 def section_push_points(push_points: list) -> str:
     html = '<section class="push-points">\n<h2>✨ 今日の名場面</h2>\n'
+    html += _scene_image_html('', '今日の名場面', 'scene-image scene-image-sub', 'highlight_scene')
     for item in push_points:
         name = item.get('name', '')
         point = item.get('point', '')
