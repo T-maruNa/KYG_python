@@ -9,6 +9,7 @@ from src.database.t_character_asset_manager import TCharacterAssetManager
 from src.core.stats_aggregator import StatsAggregator
 from src.ai_clients.gemini_client import GeminiClient
 from src.core.ai_budget_guard import AIBudgetGuard
+from src.core.prompt_loader import PromptLoader
 
 ANALYST_PROFILES = {
     'rei': {
@@ -720,20 +721,15 @@ class BlogGenerator:
             for i, r in enumerate(ranking)
         ) if ranking else ''
 
-        profiles_desc = '\n'.join(
-            f'{p["name_jp"]}({p["name_short"]}): {p["personality"]}'
-            for p in ANALYST_PROFILES.values()
-        )
-
         try:
             messages = [
-                {'role': 'system', 'content': '投資シミュレーションブログの脚本家です。'},
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## 記事ガイドライン\n\n{PromptLoader.prediction_article()}'
+                    + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}'},
                 {'role': 'user', 'content': (
-                    f'キャラクター設定：\n{profiles_desc}\n\n'
                     f'今日のエントリー：\n{entries_summary}\n'
                     f'現在の順位：{ranking_txt}\n\n'
                     f'朝の作戦会議記事用のオープニングコンテンツを作ってください。\n'
-                    f'投資助言・断言表現は使わないでください。\n'
                     f'以下のJSON形式で返してください（他の文字は不要）：\n'
                     f'{{"subtitle":"玲は堅実、律は今日もノリ勝負（例）","lead":"リード文1〜2文",'
                     f'"talk_lines":[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]}}'
@@ -765,11 +761,10 @@ class BlogGenerator:
         )
         try:
             messages = [
-                {'role': 'system', 'content': '投資シミュレーションブログの編集者です。'},
+                {'role': 'system', 'content': PromptLoader.base_system('投資シミュレーションブログの編集者')},
                 {'role': 'user', 'content': (
                     f'今日のエントリー：{entries_summary}\n'
                     f'今日特に注目すべきキャラとその理由を1〜2文で教えてください。'
-                    f'投資助言・断言表現は使わないでください。'
                 )},
             ]
             result = self.guard.execute(
@@ -805,13 +800,13 @@ class BlogGenerator:
 
         try:
             messages = [
-                {'role': 'system', 'content': '投資シミュレーションブログの脚本家です。'},
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## 記事ガイドライン\n\n{PromptLoader.result_article()}'},
                 {'role': 'user', 'content': (
                     f'今日の仮想投資結果：\n{summary}\n'
                     f'順位：{ranking_txt}\n\n'
                     f'夜の結果発表記事用のオープニングを作ってください。\n'
                     f'subtitleはキャラクターのドラマが伝わるような短いフレーズ（例：律が大暴れ、みらいは反省会へ）にしてください。\n'
-                    f'投資助言・断言表現は使わないでください。\n'
                     f'以下のJSON形式で返してください（他の文字は不要）：\n'
                     f'{{"subtitle":"律が大暴れ、みらいは反省会へ（例）","lead":"リード文1〜2文"}}'
                 )},
@@ -848,7 +843,8 @@ class BlogGenerator:
 
         try:
             messages = [
-                {'role': 'system', 'content': '投資シミュレーションブログの脚本家です。'},
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## 会話・推しポイント生成ガイドライン\n\n{PromptLoader.talk()}'},
                 {'role': 'user', 'content': (
                     f'今日の仮想投資結果：\n{summary}\n\n'
                     f'今日のキャラクターそれぞれの「推しポイント」（かわいい・面白い瞬間）を1文ずつ書いてください。\n'
@@ -876,11 +872,10 @@ class BlogGenerator:
         first = ANALYST_PROFILES.get(ranking[0]['analyst_name'], {}).get('name_short', '')
         try:
             messages = [
-                {'role': 'system', 'content': '投資シミュレーションブログの編集者です。'},
+                {'role': 'system', 'content': PromptLoader.base_system('投資シミュレーションブログの編集者')},
                 {'role': 'user', 'content': (
                     f'現在1位は{first}。'
                     f'ランキングセクションの冒頭に添える、短い1文のナレーションを書いてください。'
-                    f'投資助言・断言表現は避けてください。'
                 )},
             ]
             result = self.guard.execute(
@@ -905,11 +900,11 @@ class BlogGenerator:
         )
         try:
             messages = [
-                {'role': 'system', 'content': '投資シミュレーションブログの編集者です。'},
+                {'role': 'system', 'content': PromptLoader.base_system('投資シミュレーションブログの編集者')},
                 {'role': 'user', 'content': (
                     f'今日の仮想投資バトルの結果は以下でした：{summary}。\n'
                     f'読者が「今日もドラマあったな」と感じるような、1〜2文のリード文を書いてください。\n'
-                    f'キャラクターの名前を入れてください。投資助言・断言表現は避けてください。'
+                    f'キャラクターの名前を入れてください。'
                 )},
             ]
             result = self.guard.execute(
@@ -926,11 +921,10 @@ class BlogGenerator:
         profile = ANALYST_PROFILES.get(analyst_name, {'name_jp': analyst_name})
         try:
             messages = [
-                {'role': 'system', 'content': f'あなたは{profile["name_jp"]}です。{personality}'},
+                {'role': 'system', 'content': PromptLoader.character_system(analyst_name, profile['name_jp'])},
                 {'role': 'user', 'content': (
                     f'今日の成績は{sign}{profit:,}円（{win}勝{lose}敗）でした。'
                     f'今日の主役として紹介される1文のコメントを返してください。'
-                    f'投資助言・断言表現は避けてください。'
                 )},
             ]
             result = self.guard.execute(
@@ -956,10 +950,6 @@ class BlogGenerator:
             for i, r in enumerate(ranking)
         ) if ranking else ''
 
-        profiles_desc = '\n'.join(
-            f'{p["name_jp"]}({p["name_short"]}): {p["personality"]}'
-            for p in ANALYST_PROFILES.values()
-        )
         fallback = [
             {'name': 'rei',   'line': '今日も精一杯やりました。'},
             {'name': 'mirai', 'line': '明日はもっとうまくやれる気がする！'},
@@ -967,15 +957,13 @@ class BlogGenerator:
         ]
         try:
             messages = [
-                {'role': 'system', 'content': (
-                    f'あなたは以下の3人のキャラクターの掛け合い会話を書く脚本家です。\n{profiles_desc}'
-                )},
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}'},
                 {'role': 'user', 'content': (
                     f'今日の仮想投資結果：\n{summary}\n'
                     f'順位：{ranking_txt}\n\n'
                     f'3人が今日の結果について1行ずつ会話する「反省会」シーンを書いてください。\n'
                     f'各キャラの性格が出るようにしてください。\n'
-                    f'投資助言・断言表現は使わないでください。\n'
                     f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
                     f'[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]'
                 )},
@@ -1001,11 +989,11 @@ class BlogGenerator:
         last = ANALYST_PROFILES.get(ranking[-1]['analyst_name'], {}).get('name_short', '') if len(ranking) > 1 else ''
         try:
             messages = [
-                {'role': 'system', 'content': '投資シミュレーションブログの編集者です。'},
+                {'role': 'system', 'content': PromptLoader.base_system('投資シミュレーションブログの編集者')},
                 {'role': 'user', 'content': (
                     f'現在の順位: {", ".join(ANALYST_PROFILES.get(r["analyst_name"],{}).get("name_short","") for r in ranking)}の順。\n'
                     f'読者が明日も見に来たくなるような、1文の締めの文章を書いてください。\n'
-                    f'キャラ名を入れて、連載感を出してください。投資助言・断言表現は避けてください。'
+                    f'キャラ名を入れて、連載感を出してください。'
                 )},
             ]
             result = self.guard.execute(
@@ -1031,11 +1019,10 @@ class BlogGenerator:
             rank_context = '現在1位です。' if rank == 1 else f'現在{rank}位（1位との差：{gap:,}円）です。'
         try:
             messages = [
-                {'role': 'system', 'content': f'あなたは{profile["name_jp"]}です。{personality}'},
+                {'role': 'system', 'content': PromptLoader.character_system(analyst_name, profile['name_jp'])},
                 {'role': 'user', 'content': (
                     f'今日の結果は{sign}{profit:,}円（{win}勝{lose}敗）でした。{rank_context}'
                     f'キャラクターらしい短いコメントを1〜2文で。順位にも触れてください。'
-                    f'投資助言・断言表現は避けてください。'
                 )},
             ]
             result = self.guard.execute(
@@ -1051,9 +1038,9 @@ class BlogGenerator:
         rank_ctx = f'{total}人中1位です。' if rank == 1 else f'{total}人中{rank}位で、1位との差は{gap_from_first:,}円です。'
         try:
             messages = [
-                {'role': 'system', 'content': f'あなたは{profile["name_jp"]}です。{personality}'},
+                {'role': 'system', 'content': PromptLoader.character_system(analyst_name, profile['name_jp'])},
                 {'role': 'user', 'content': (
-                    f'{rank_ctx}順位についてキャラクターらしい一言を1文で。投資助言・断言表現は避けてください。'
+                    f'{rank_ctx}順位についてキャラクターらしい一言を1文で。'
                 )},
             ]
             result = self.guard.execute(
@@ -1069,10 +1056,10 @@ class BlogGenerator:
         stocks_str = '、'.join(stock_names)
         try:
             messages = [
-                {'role': 'system', 'content': f'あなたは{profile["name_jp"]}です。{personality}'},
+                {'role': 'system', 'content': PromptLoader.character_system(analyst_name, profile['name_jp'])},
                 {'role': 'user', 'content': (
                     f'今日のエントリー銘柄は{stocks_str}です。'
-                    f'選んだ理由や意気込みをキャラクターらしく1〜2文で。投資助言・断言表現は避けてください。'
+                    f'選んだ理由や意気込みをキャラクターらしく1〜2文で。'
                 )},
             ]
             result = self.guard.execute(

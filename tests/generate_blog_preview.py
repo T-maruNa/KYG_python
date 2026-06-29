@@ -19,6 +19,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'batch'))
 
+from src.core.prompt_loader import PromptLoader
+
 # ---------------------------------------------------------------------------
 # サンプルデータ
 # ---------------------------------------------------------------------------
@@ -256,10 +258,10 @@ def generate_lead() -> str:
         for d in SAMPLE_DAILY
     )
     return _ai(
-        system='投資シミュレーションブログの編集者です。',
+        system=PromptLoader.base_system('投資シミュレーションブログの編集者'),
         user=(f'今日の仮想投資バトルの結果は以下でした：{summary}。\n'
               f'読者が「今日もドラマあったな」と感じるような、1〜2文のリード文を書いてください。'
-              f'キャラクターの名前を入れてください。投資助言・断言表現は避けてください。'),
+              f'キャラクターの名前を入れてください。'),
         fallback=summary,
     )
 
@@ -270,10 +272,9 @@ def generate_hero_intro(hero: dict) -> str:
     sign = '+' if profit >= 0 else ''
     win, lose = hero['win_count'], hero['lose_count']
     return _ai(
-        system=f'あなたは{profile["name_jp"]}です。{profile["personality"]}',
+        system=PromptLoader.character_system(name, profile['name_jp']),
         user=(f'今日の成績は{sign}{profit:,}円（{win}勝{lose}敗）でした。'
-              f'今日の主役として紹介される1文のコメントを返してください。'
-              f'投資助言・断言表現は避けてください。'),
+              f'今日の主役として紹介される1文のコメントを返してください。'),
         fallback=f'今日は{sign}{profit:,}円。{win}勝{lose}敗でした。',
     )
 
@@ -293,15 +294,11 @@ def generate_girls_talk() -> list:
         f'{i+1}位: {ANALYST_PROFILES[r["analyst_name"]]["name_short"]}'
         for i, r in enumerate(SAMPLE_RANKING)
     )
-    profiles_desc = '\n'.join(
-        f'{p["name_jp"]}({p["name_short"]}): {p["personality"]}'
-        for p in ANALYST_PROFILES.values()
-    )
     raw = _ai_raw(
-        system=f'あなたは以下の3人のキャラクターの掛け合い会話を書く脚本家です。\n{profiles_desc}',
+        system=PromptLoader.base_system() + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}',
         user=(f'今日の仮想投資結果：\n{summary}\n順位：{ranking_txt}\n\n'
               f'3人が今日の結果について1行ずつ会話する「反省会」シーンを書いてください。'
-              f'各キャラの性格が出るようにしてください。投資助言・断言表現は使わないでください。\n'
+              f'各キャラの性格が出るようにしてください。\n'
               f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
               f'[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]'),
     )
@@ -321,10 +318,10 @@ def generate_next_hook() -> str:
         ANALYST_PROFILES[r['analyst_name']]['name_short'] for r in SAMPLE_RANKING
     )
     return _ai(
-        system='投資シミュレーションブログの編集者です。',
+        system=PromptLoader.base_system('投資シミュレーションブログの編集者'),
         user=(f'現在の順位: {ranking_txt}の順。\n'
               f'読者が明日も見に来たくなるような、1文の締めの文章を書いてください。'
-              f'キャラ名を入れて、連載感を出してください。投資助言・断言表現は避けてください。'),
+              f'キャラ名を入れて、連載感を出してください。'),
         fallback='明日も3人の勝負を、ゆるく見守ってください。',
     )
 
@@ -350,17 +347,13 @@ def generate_morning_opening() -> dict:
         f'{i+1}位: {ANALYST_PROFILES[r["analyst_name"]]["name_short"]}（{r["current_balance"]:,}円）'
         for i, r in enumerate(SAMPLE_RANKING)
     )
-    profiles_desc = '\n'.join(
-        f'{p["name_jp"]}({p["name_short"]}): {p["personality"]}'
-        for p in ANALYST_PROFILES.values()
-    )
     raw = _ai_raw(
-        system='投資シミュレーションブログの脚本家です。',
-        user=(f'キャラクター設定：\n{profiles_desc}\n\n'
-              f'今日のエントリー：\n{entries_summary}\n'
+        system=PromptLoader.base_system()
+            + f'\n\n## 記事ガイドライン\n\n{PromptLoader.prediction_article()}'
+            + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}',
+        user=(f'今日のエントリー：\n{entries_summary}\n'
               f'現在の順位：{ranking_txt}\n\n'
               f'朝の作戦会議記事用のオープニングコンテンツを作ってください。\n'
-              f'投資助言・断言表現は使わないでください。\n'
               f'以下のJSON形式で返してください（他の文字は不要）：\n'
               f'{{"subtitle":"玲は堅実、律は今日もノリ勝負（例）","lead":"リード文1〜2文",'
               f'"talk_lines":[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]}}'),
@@ -382,10 +375,9 @@ def generate_spotlight() -> str:
         for e in SAMPLE_TODAY_ENTRIES
     )
     return _ai(
-        system='投資シミュレーションブログの編集者です。',
+        system=PromptLoader.base_system('投資シミュレーションブログの編集者'),
         user=(f'今日のエントリー：{entries_summary}\n'
-              f'今日特に注目すべきキャラとその理由を1〜2文で教えてください。'
-              f'投資助言・断言表現は使わないでください。'),
+              f'今日特に注目すべきキャラとその理由を1〜2文で教えてください。'),
         fallback='3人それぞれの勝負に注目です。',
     )
 
@@ -402,7 +394,7 @@ def generate_push_points() -> list:
         for d in SAMPLE_DAILY
     )
     raw = _ai_raw(
-        system='投資シミュレーションブログの脚本家です。',
+        system=PromptLoader.base_system() + f'\n\n## 会話・推しポイント生成ガイドライン\n\n{PromptLoader.talk()}',
         user=(f'今日の仮想投資結果：\n{summary}\n\n'
               f'今日のキャラクターそれぞれの「推しポイント」（かわいい・面白い瞬間）を1文ずつ書いてください。\n'
               f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
@@ -457,10 +449,9 @@ def section_result() -> str:
         rank_ctx = '現在1位です。' if rank == 1 else f'現在{rank}位（1位との差：{gap:,}円）です。'
 
         comment = _ai(
-            system=f'あなたは{profile["name_jp"]}です。{profile["personality"]}',
+            system=PromptLoader.character_system(name, profile['name_jp']),
             user=(f'今日の結果は{sign}{profit:,}円（{win}勝{lose}敗）でした。{rank_ctx}'
-                  f'キャラクターらしい短いコメントを1〜2文で。順位にも触れてください。'
-                  f'投資助言・断言表現は避けてください。'),
+                  f'キャラクターらしい短いコメントを1〜2文で。順位にも触れてください。'),
             fallback=f'今日は{sign}{profit:,}円でした。',
         )
         html += (
@@ -511,8 +502,8 @@ def section_ranking() -> str:
         rank = i + 1
         rank_ctx = f'{total}人中1位です。' if rank == 1 else f'{total}人中{rank}位（差：{gap:,}円）です。'
         comment = _ai(
-            system=f'あなたは{profile["name_jp"]}です。{profile["personality"]}',
-            user=(f'{rank_ctx}順位についてキャラクターらしい一言を1文で。投資助言・断言表現は避けてください。'),
+            system=PromptLoader.character_system(name, profile['name_jp']),
+            user=(f'{rank_ctx}順位についてキャラクターらしい一言を1文で。'),
             fallback=f'{rank}位です。',
         )
         html += (
@@ -546,9 +537,9 @@ def section_today_entry() -> str:
 
         stocks = [e['stock_name'] for e in ae]
         comment = _ai(
-            system=f'あなたは{profile["name_jp"]}です。{profile["personality"]}',
+            system=PromptLoader.character_system(analyst_name, profile['name_jp']),
             user=(f'今日のエントリー銘柄は{"、".join(stocks)}です。'
-                  f'選んだ理由や意気込みをキャラクターらしく1〜2文で。投資助言・断言表現は避けてください。'),
+                  f'選んだ理由や意気込みをキャラクターらしく1〜2文で。'),
             fallback=f'今日は{"、".join(stocks)}に注目しています。',
         )
         html += (
