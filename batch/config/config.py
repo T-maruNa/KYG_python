@@ -30,5 +30,12 @@ class Config:
     # AI呼び出し1回あたりの推定コスト（円）— 超えたら月次予算チェックに使う
     ESTIMATED_COST_PER_CALL_JPY = float(os.getenv('ESTIMATED_COST_PER_CALL_JPY', '30'))
 
+    # キャラクター画像URL（未設定の場合は画像なし）
+    IMG_MORNING_SCENE = os.getenv('IMG_MORNING_SCENE', '')  # 朝の作戦会議 3人集合画像
+    IMG_EVENING_SCENE = os.getenv('IMG_EVENING_SCENE', '')  # 夜の反省会 3人集合画像
+    IMG_REI   = os.getenv('IMG_REI', '')                    # 玲のキャラ画像
+    IMG_MIRAI = os.getenv('IMG_MIRAI', '')                  # みらいのキャラ画像
+    IMG_RITU  = os.getenv('IMG_RITU', '')                   # 律のキャラ画像
+
 
 config = Config()

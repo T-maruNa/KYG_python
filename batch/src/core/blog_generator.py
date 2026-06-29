@@ -10,6 +10,7 @@ from src.core.stats_aggregator import StatsAggregator
 from src.ai_clients.gemini_client import GeminiClient
 from src.core.ai_budget_guard import AIBudgetGuard
 from src.core.prompt_loader import PromptLoader
+from config.config import config
 
 ANALYST_PROFILES = {
     'rei': {
@@ -46,6 +47,17 @@ ANALYST_PROFILES = {
         'visual': '金髪ギャル、ネイル、アクセサリー',
     },
 }
+
+CHAR_IMAGES = {
+    'rei':   lambda: config.IMG_REI,
+    'mirai': lambda: config.IMG_MIRAI,
+    'ritu':  lambda: config.IMG_RITU,
+}
+
+def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image') -> str:
+    if not url:
+        return ''
+    return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
 
 FORBIDDEN_PHRASES = [
     '絶対', '確実', '必ず上がる', '買うべき', '儲かる', '保証', '推奨銘柄',
@@ -122,6 +134,11 @@ BATTLE_CSS = '''<style>
 .disclaimer-box{font-size:.86rem;color:#7a7280;background:#fafafa;border-radius:16px;padding:14px 16px;margin-top:32px;border:1px solid #eee;}
 /* 朝記事 */
 .strategy-talk{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
+.scene-image{margin:14px 0;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(80,60,90,.10);}
+.scene-image img{width:100%;height:auto;display:block;}
+.scene-image-main{margin:16px 0 20px;}
+.hero-image{margin:12px 0 16px;max-width:420px;}
+.hero-image img{border-radius:16px;}
 .strategy-talk h2::before{content:"☀️ ";font-style:normal;}
 .spotlight-card{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:18px;padding:16px 20px;margin:16px 0;border:1px solid #f0ddea;}
 .spotlight-card h3::before{content:"👀 ";}
@@ -394,6 +411,7 @@ class BlogGenerator:
             '<section class="strategy-talk">\n'
             '<h2>☀️ 今日の作戦会議</h2>\n'
         )
+        html += _scene_image_html(config.IMG_MORNING_SCENE, '朝の作戦会議をする3人', 'scene-image scene-image-main')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')
@@ -471,10 +489,12 @@ class BlogGenerator:
 
         intro = self._generate_hero_intro(name, profile['personality'], profit, win, lose)
 
+        hero_img = _scene_image_html(CHAR_IMAGES.get(name, lambda: '')(), f'{profile["name_short"]}', 'scene-image hero-image')
         return (
             f'<section class="today-hero character-{name}">\n'
             f'  <p class="section-label">今日の主役</p>\n'
             f'  <h2>{profile["name_short"]}が今日の主役！</h2>\n'
+            f'{hero_img}'
             f'  <p>{intro}</p>\n'
             f'</section>\n'
         )
@@ -630,6 +650,7 @@ class BlogGenerator:
             '<section class="girls-talk">\n'
             '<h2>🌙 今日の反省会</h2>\n'
         )
+        html += _scene_image_html(config.IMG_EVENING_SCENE, '夜の反省会をする3人', 'scene-image scene-image-main')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')

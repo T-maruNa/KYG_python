@@ -63,6 +63,22 @@ SAMPLE_CUMULATIVE_MVP = [
 SAMPLE_MORNING_POST_URL = 'https://example.com/2026/06/29/morning-strategy/'
 
 # ---------------------------------------------------------------------------
+# 画像URL設定（未設定 or 空文字の場合は非表示）
+# ---------------------------------------------------------------------------
+SCENE_IMAGES = {
+    'morning_scene': os.getenv('IMG_MORNING_SCENE', ''),   # 朝の作戦会議 3人集合画像
+    'evening_scene': os.getenv('IMG_EVENING_SCENE', ''),   # 夜の反省会 3人集合画像
+    'rei':   os.getenv('IMG_REI', ''),                      # 玲のキャラ画像
+    'mirai': os.getenv('IMG_MIRAI', ''),                    # みらいのキャラ画像
+    'ritu':  os.getenv('IMG_RITU', ''),                     # 律のキャラ画像
+}
+
+def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image') -> str:
+    if not url:
+        return ''
+    return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
+
+# ---------------------------------------------------------------------------
 # キャラクター定義（blog_generator.py と同じ）
 # ---------------------------------------------------------------------------
 ANALYST_PROFILES = {
@@ -179,6 +195,12 @@ BATTLE_CSS = '''<style>
 .strategy-reason{font-size:.88rem;color:#6a5a72;background:rgba(255,255,255,.6);border-radius:10px;padding:8px 12px;margin:10px 0;border-left:3px solid rgba(180,150,190,.4);}
 .strategy-total{display:inline-block;margin:4px 0 8px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.82);color:#7a6b80;font-size:.82rem;border:1px solid rgba(200,180,210,.35);box-shadow:0 2px 8px rgba(80,60,90,.04);}
 .strategy-total strong{color:#4b3b57;}
+/* シーン画像 */
+.scene-image{margin:14px 0;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(80,60,90,.10);}
+.scene-image img{width:100%;height:auto;display:block;}
+.scene-image-main{margin:16px 0 20px;}
+.hero-image{margin:12px 0 16px;max-width:420px;}
+.hero-image img{border-radius:16px;}
 
 /* ランキング */
 .ranking-card{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:12px 14px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);background-image:none;}
@@ -489,10 +511,12 @@ def generate_push_points() -> list:
 def section_today_hero(hero: dict, intro: str) -> str:
     name = hero['analyst_name']
     profile = ANALYST_PROFILES[name]
+    hero_img = _scene_image_html(SCENE_IMAGES.get(name, ''), f'{profile["name_short"]}', 'scene-image hero-image')
     return (
         f'<section class="today-hero character-{name}">\n'
         f'  <p class="section-label">今日の主役</p>\n'
         f'  <h2>{profile["name_short"]}が今日の主役！</h2>\n'
+        f'{hero_img}'
         f'  <p>{intro}</p>\n'
         f'</section>\n'
     )
@@ -646,6 +670,7 @@ def section_today_entry() -> str:
 
 def section_strategy_talk(talk_lines: list) -> str:
     html = '<section class="strategy-talk">\n<h2>☀️ 今日の作戦会議</h2>\n'
+    html += _scene_image_html(SCENE_IMAGES['morning_scene'], '朝の作戦会議をする3人', 'scene-image scene-image-main')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -679,6 +704,7 @@ def section_morning_link(url: str = None) -> str:
 
 def section_girls_talk(talk_lines: list) -> str:
     html = '<section class="girls-talk">\n<h2>🌙 今日の反省会</h2>\n'
+    html += _scene_image_html(SCENE_IMAGES['evening_scene'], '夜の反省会をする3人', 'scene-image scene-image-main')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
