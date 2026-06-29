@@ -177,6 +177,7 @@ BATTLE_CSS = '''<style>
 .stock-code{font-size:.75rem;color:#9b6b88;background:#f6eef6;border-radius:6px;padding:2px 6px;}
 .amount{font-size:.78rem;color:#7a6b80;}
 .strategy-reason{font-size:.88rem;color:#6a5a72;background:rgba(255,255,255,.6);border-radius:10px;padding:8px 12px;margin:10px 0;border-left:3px solid rgba(180,150,190,.4);}
+.strategy-total{font-size:.82rem;color:#9b6b88;text-align:right;margin:6px 0 2px;}
 
 /* ランキング */
 .ranking-card{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:12px 14px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);background-image:none;}
@@ -610,8 +611,10 @@ def section_today_entry() -> str:
             f'  <div class="entry-chip-list">\n'
         )
         reasons = []
+        total = 0
         for e in ae:
             approx_man = round(e['buy_amount'] / 10000)
+            total += e['buy_amount']
             html += (
                 f'    <div class="entry-chip">'
                 f'<span class="stock-code">{e["stock_code"]}</span>'
@@ -621,6 +624,8 @@ def section_today_entry() -> str:
             )
             reasons.append(e.get('prediction_reason', ''))
         html += '  </div>\n'
+        total_man = round(total / 10000)
+        html += f'  <div class="strategy-total">今日の仮想投資額：<strong>合計 約{total_man}万円</strong></div>\n'
         reason_text = '／'.join(r for r in reasons if r)
         if reason_text:
             html += f'  <div class="strategy-reason">{reason_text}</div>\n'

@@ -609,6 +609,8 @@ class BlogGenerator:
                 )
                 reasons.append(e.get('prediction_reason', ''))
             html += f'  </div>\n'
+            total_man = round(total / 10000)
+            html += f'  <div class="strategy-total">今日の仮想投資額：<strong>合計 約{total_man}万円</strong></div>\n'
             reason_text = '／'.join(r for r in reasons if r)
             if reason_text:
                 html += f'  <div class="strategy-reason">{reason_text}</div>\n'
