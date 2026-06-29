@@ -220,7 +220,7 @@ class BlogGenerator:
             {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
         ])
 
-        spotlight_text = self._generate_spotlight(today_entries, ranking)
+        morning_three = self._generate_morning_three(today_entries, ranking)
 
         title = f'【AI投資バトル】{trade_date} 朝の作戦会議｜{subtitle}'
 
@@ -243,7 +243,7 @@ class BlogGenerator:
             notice,
             self._section_strategy_talk(talk_lines),
             self._section_morning_entry(trade_date, today_entries),
-            self._section_spotlight(spotlight_text),
+            self._section_morning_three(morning_three),
             self._section_result_teaser(trade_date),
             DISCLAIMER,
             '</section>',
@@ -406,13 +406,19 @@ class BlogGenerator:
     def _section_morning_entry(self, trade_date: str, entries: List[Dict]) -> str:
         return self._section_today_entry(trade_date, entries)
 
-    def _section_spotlight(self, text: str) -> str:
-        return (
-            f'<section class="spotlight-card">'
-            f'<h3>今日の注目キャラ</h3>'
-            f'<p>{text}</p>'
-            f'</section>\n'
-        )
+    def _section_morning_three(self, talk_lines: List[Dict]) -> str:
+        """朝記事: 今朝の3人（順位・選択・関係性セリフ）"""
+        if not talk_lines:
+            return ''
+        html = '<section class="strategy-talk">\n<h2>今朝の3人</h2>\n'
+        for line in talk_lines:
+            name = line.get('name', '')
+            text = line.get('line', '')
+            profile = ANALYST_PROFILES.get(name, {'name_short': name})
+            short = profile.get('name_short', name)
+            html += f'<div class="talk-line {name}">{short}「{text}」</div>\n'
+        html += '</section>\n'
+        return html
 
     def _section_result_teaser(self, trade_date: str) -> str:
         return (
@@ -438,7 +444,7 @@ class BlogGenerator:
             return ''
         html = (
             '<section class="push-points">\n'
-            '<h2>今日の推しポイント</h2>\n'
+            '<h2>今日のハイライト</h2>\n'
         )
         for item in push_points:
             name = item.get('name', '')
@@ -748,31 +754,52 @@ class BlogGenerator:
             pass
         return fallback
 
-    def _generate_spotlight(self, today_entries: List[Dict], ranking: List[Dict]) -> str:
-        """今日の注目キャラについての短い紹介文を生成する。"""
-        fallback = '3人それぞれの勝負に注目です。'
+    def _generate_morning_three(self, today_entries: List[Dict], ranking: List[Dict]) -> List[Dict]:
+        """朝記事「今朝の3人」セクション用のセリフ一覧を生成する。"""
+        fallback = [
+            {'name': 'rei',   'line': 'テクニカルで流れを拾っていきます。'},
+            {'name': 'mirai', 'line': '今日もいい銘柄見つけたよ！'},
+            {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
+        ]
         if not today_entries:
             return fallback
 
-        entries_summary = ', '.join(
-            f'{ANALYST_PROFILES.get(e["analyst_name"], {}).get("name_short", e["analyst_name"])}'
-            f'→{e.get("stock_name", "")}'
+        entries_summary = '\n'.join(
+            f'{ANALYST_PROFILES.get(e["analyst_name"], {}).get("name_jp", e["analyst_name"])}: '
+            f'{e.get("stock_name", "")}（{e.get("stock_code", "")}）'
             for e in today_entries
         )
+        ranking_txt = ', '.join(
+            f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"], {}).get("name_short", r["analyst_name"])}'
+            f'（{r["current_balance"]:,}円）'
+            for i, r in enumerate(ranking)
+        ) if ranking else ''
+
         try:
             messages = [
-                {'role': 'system', 'content': PromptLoader.base_system('投資シミュレーションブログの編集者')},
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}'},
                 {'role': 'user', 'content': (
-                    f'今日のエントリー：{entries_summary}\n'
-                    f'今日特に注目すべきキャラとその理由を1〜2文で教えてください。'
+                    f'今日のエントリー：\n{entries_summary}\n'
+                    f'現在の順位：{ranking_txt}\n\n'
+                    f'「今朝の3人」コーナー用のセリフを生成してください。'
+                    f'各キャラが現在の順位・自分の選択・他2人の選択への反応を踏まえて一言ずつ話します。\n'
+                    f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
+                    f'[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]'
                 )},
             ]
-            result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='spotlight', model='gemini',
+            raw = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='morning_three', model='gemini',
             )
-            return result.strip() if result else fallback
+            if raw:
+                m = re.search(r'\[.*?\]', raw, re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group())
+                    if isinstance(parsed, list) and len(parsed) == 3:
+                        return parsed
         except Exception:
-            return fallback
+            pass
+        return fallback
 
     # ------------------------------------------------------------------
     # AI生成: 夜記事
@@ -827,9 +854,9 @@ class BlogGenerator:
     def _generate_push_points(self, daily: List[Dict]) -> List[Dict]:
         """各キャラの今日の推しポイントを1回のAIコールで生成する。"""
         fallback = [
-            {'name': 'rei',   'point': '負けても分析ノートを閉じないところ'},
-            {'name': 'mirai', 'point': 'いつも前向きで諦めないところ'},
-            {'name': 'ritu',  'point': '勝っても負けても全力で楽しんでいるところ'},
+            {'name': 'rei',   'point': 'メガネを直しながら、今日のプラスを静かに確認。'},
+            {'name': 'mirai', 'point': '悔しそうにしながらも、明日の巻き返しを口にする。'},
+            {'name': 'ritu',  'point': '今日も全力で喜んだり、しょんぼりしたりの一日。'},
         ]
         if not daily:
             return fallback
@@ -847,7 +874,8 @@ class BlogGenerator:
                     + f'\n\n## 会話・推しポイント生成ガイドライン\n\n{PromptLoader.talk()}'},
                 {'role': 'user', 'content': (
                     f'今日の仮想投資結果：\n{summary}\n\n'
-                    f'今日のキャラクターそれぞれの「推しポイント」（かわいい・面白い瞬間）を1文ずつ書いてください。\n'
+                    f'今日のキャラクターそれぞれの「ハイライト」を1文ずつ書いてください。'
+                    f'その日の名場面・情景を自然な一文で切り取ってください（推し説明ではなくシーン描写）。\n'
                     f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
                     f'[{{"name":"rei","point":"..."}},{{"name":"mirai","point":"..."}},{{"name":"ritu","point":"..."}}]'
                 )},

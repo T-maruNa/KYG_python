@@ -369,23 +369,45 @@ def generate_morning_opening() -> dict:
             pass
     return fallback
 
-def generate_spotlight() -> str:
-    entries_summary = ', '.join(
-        f'{ANALYST_PROFILES[e["analyst_name"]]["name_short"]}→{e["stock_name"]}'
+def generate_morning_three() -> list:
+    fallback = [
+        {'name': 'rei',   'line': 'テクニカルで流れを拾っていきます。'},
+        {'name': 'mirai', 'line': '今日もいい銘柄見つけたよ！'},
+        {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
+    ]
+    entries_summary = '\n'.join(
+        f'{ANALYST_PROFILES[e["analyst_name"]]["name_jp"]}: {e["stock_name"]}（{e["stock_code"]}）'
         for e in SAMPLE_TODAY_ENTRIES
     )
-    return _ai(
-        system=PromptLoader.base_system('投資シミュレーションブログの編集者'),
-        user=(f'今日のエントリー：{entries_summary}\n'
-              f'今日特に注目すべきキャラとその理由を1〜2文で教えてください。'),
-        fallback='3人それぞれの勝負に注目です。',
+    ranking_txt = ', '.join(
+        f'{i+1}位: {ANALYST_PROFILES[r["analyst_name"]]["name_short"]}（{r["current_balance"]:,}円）'
+        for i, r in enumerate(SAMPLE_RANKING)
     )
+    raw = _ai_raw(
+        system=PromptLoader.base_system() + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}',
+        user=(f'今日のエントリー：\n{entries_summary}\n'
+              f'現在の順位：{ranking_txt}\n\n'
+              f'「今朝の3人」コーナー用のセリフを生成してください。'
+              f'各キャラが現在の順位・自分の選択・他2人の選択への反応を踏まえて一言ずつ話します。\n'
+              f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
+              f'[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]'),
+    )
+    if raw:
+        try:
+            m = re.search(r'\[.*?\]', raw, re.DOTALL)
+            if m:
+                parsed = json.loads(m.group())
+                if isinstance(parsed, list) and len(parsed) == 3:
+                    return parsed
+        except Exception:
+            pass
+    return fallback
 
 def generate_push_points() -> list:
     fallback = [
-        {'name': 'rei',   'point': '負けても分析ノートを閉じないところ'},
-        {'name': 'mirai', 'point': 'いつも前向きで諦めないところ'},
-        {'name': 'ritu',  'point': '勝っても負けても全力で楽しんでいるところ'},
+        {'name': 'rei',   'point': 'メガネを直しながら、今日のプラスを静かに確認。'},
+        {'name': 'mirai', 'point': '悔しそうにしながらも、明日の巻き返しを口にする。'},
+        {'name': 'ritu',  'point': '今日も全力で喜んだり、しょんぼりしたりの一日。'},
     ]
     summary = '\n'.join(
         f'{ANALYST_PROFILES[d["analyst_name"]]["name_jp"]}: '
@@ -394,9 +416,10 @@ def generate_push_points() -> list:
         for d in SAMPLE_DAILY
     )
     raw = _ai_raw(
-        system=PromptLoader.base_system() + f'\n\n## 会話・推しポイント生成ガイドライン\n\n{PromptLoader.talk()}',
+        system=PromptLoader.base_system() + f'\n\n## ハイライト生成ガイドライン\n\n{PromptLoader.talk()}',
         user=(f'今日の仮想投資結果：\n{summary}\n\n'
-              f'今日のキャラクターそれぞれの「推しポイント」（かわいい・面白い瞬間）を1文ずつ書いてください。\n'
+              f'今日のキャラクターそれぞれの「ハイライト」を1文ずつ書いてください。'
+              f'その日の名場面・情景を自然な一文で切り取ってください（推し説明ではなくシーン描写）。\n'
               f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
               f'[{{"name":"rei","point":"..."}},{{"name":"mirai","point":"..."}},{{"name":"ritu","point":"..."}}]'),
     )
@@ -560,13 +583,15 @@ def section_strategy_talk(talk_lines: list) -> str:
     html += '</section>\n'
     return html
 
-def section_spotlight(text: str) -> str:
-    return (
-        f'<section class="spotlight-card">'
-        f'<h3>今日の注目キャラ</h3>'
-        f'<p>{text}</p>'
-        f'</section>\n'
-    )
+def section_morning_three(talk_lines: list) -> str:
+    html = '<section class="strategy-talk">\n<h2>今朝の3人</h2>\n'
+    for line in talk_lines:
+        name = line.get('name', '')
+        text = line.get('line', '')
+        short = ANALYST_PROFILES.get(name, {}).get('name_short', name)
+        html += f'<div class="talk-line {name}">{short}「{text}」</div>\n'
+    html += '</section>\n'
+    return html
 
 def section_result_teaser(trade_date: str) -> str:
     return (
@@ -592,7 +617,7 @@ def section_girls_talk(talk_lines: list) -> str:
     return html
 
 def section_push_points(push_points: list) -> str:
-    html = '<section class="push-points">\n<h2>今日の推しポイント</h2>\n'
+    html = '<section class="push-points">\n<h2>今日のハイライト</h2>\n'
     for item in push_points:
         name = item.get('name', '')
         point = item.get('point', '')
@@ -633,8 +658,8 @@ def build_morning_html() -> str:
         {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
     ])
 
-    print('  [朝記事] スポットライト...')
-    spotlight_text = generate_spotlight()
+    print('  [朝記事] 今朝の3人...')
+    morning_three = generate_morning_three()
 
     print('  [朝記事] エントリー...')
     s_entry = section_today_entry()
@@ -660,7 +685,7 @@ def build_morning_html() -> str:
         notice,
         section_strategy_talk(talk_lines),
         s_entry,
-        section_spotlight(spotlight_text),
+        section_morning_three(morning_three),
         section_result_teaser(SAMPLE_TRADE_DATE),
         DISCLAIMER,
         '</div>',
