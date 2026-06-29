@@ -146,9 +146,12 @@ def section_result() -> str:
             fallback=f'今日は{sign}{profit:,}円でした。',
         )
 
+        expression = get_expression(avg_rate)
         html += (
             f'<div class="character-result">\n'
             f'  <h3>{profile["name_jp"]}</h3>\n'
+            f'  <div class="img-placeholder">🖼️ キャラクター画像（表情: {expression}）<br>'
+            f'  <small>※ 損益率により結果によって変動します</small></div>\n'
             f'  <p>損益: <strong>{sign}{profit:,}円</strong>（{win}勝{lose}敗）'
             f'　残高: {balance:,}円</p>\n'
             f'  <blockquote>{comment}</blockquote>\n'
@@ -249,6 +252,7 @@ CSS = '''
   h3 { color: #533483; }
   .character-result { background: #f9f9f9; border-radius: 8px; padding: 1em; margin: 1em 0; }
   blockquote { border-left: 4px solid #0f3460; margin: 0.5em 0; padding: 0.5em 1em; background: #eef; }
+  .img-placeholder { display: inline-block; width: 200px; padding: 1em; background: #f0f0f0; border: 2px dashed #aaa; border-radius: 8px; text-align: center; color: #666; font-size: 0.9em; margin: 0.5em 0; }
   table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
   th { background: #0f3460; color: white; padding: 8px; }
   td { padding: 6px 8px; border: 1px solid #ddd; }
