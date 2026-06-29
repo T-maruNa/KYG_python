@@ -188,7 +188,13 @@ def section_ranking() -> str:
                   f'投資助言・断言表現は避けてください。'),
             fallback=f'{rank}位です。',
         )
-        html += f'<p><strong>{profile["name_jp"]}</strong>：{comment}</p>\n'
+        html += (
+            f'<div class="character-inline">\n'
+            f'  <div class="img-placeholder img-small">🖼️ {profile["name_jp"]}<br>'
+            f'  <small>※ 結果によって変動</small></div>\n'
+            f'  <p><strong>{profile["name_jp"]}</strong>：{comment}</p>\n'
+            f'</div>\n'
+        )
 
     return html
 
@@ -224,7 +230,13 @@ def section_today_entry() -> str:
                   f'投資助言・断言表現は避けてください。'),
             fallback=f'今日は{"、".join(stocks)}に注目しています。',
         )
-        html += f'<blockquote>{comment}</blockquote>\n'
+        html += (
+            f'<div class="character-inline">\n'
+            f'  <div class="img-placeholder img-small">🖼️ {profile["name_jp"]}<br>'
+            f'  <small>※ 結果によって変動</small></div>\n'
+            f'  <blockquote>{comment}</blockquote>\n'
+            f'</div>\n'
+        )
     return html
 
 
@@ -253,6 +265,8 @@ CSS = '''
   .character-result { background: #f9f9f9; border-radius: 8px; padding: 1em; margin: 1em 0; }
   blockquote { border-left: 4px solid #0f3460; margin: 0.5em 0; padding: 0.5em 1em; background: #eef; }
   .img-placeholder { display: inline-block; width: 200px; padding: 1em; background: #f0f0f0; border: 2px dashed #aaa; border-radius: 8px; text-align: center; color: #666; font-size: 0.9em; margin: 0.5em 0; }
+  .img-small { width: 100px; padding: 0.5em; font-size: 0.8em; }
+  .character-inline { display: flex; align-items: flex-start; gap: 1em; margin: 0.5em 0; }
   table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
   th { background: #0f3460; color: white; padding: 8px; }
   td { padding: 6px 8px; border: 1px solid #ddd; }
