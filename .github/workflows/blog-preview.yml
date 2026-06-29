@@ -1,0 +1,35 @@
+name: Blog Preview
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  generate-preview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install google-generativeai python-dotenv
+
+      - name: Generate blog preview
+        env:
+          GEMINI_STOCK_API_KEY: ${{ secrets.GEMINI_STOCK_API_KEY }}
+        run: python tests/generate_blog_preview.py
+
+      - name: Upload blog preview
+        uses: actions/upload-artifact@v7
+        with:
+          name: blog-preview
+          path: tests/blog_preview.html
+          retention-days: 7

@@ -1,301 +1,306 @@
-import pandas as pd
-from typing import List, Dict
+import csv
+import io
+import math
+import random
+from typing import List, Dict, Optional
 from src.characters import get_analysts
-from src.ai_clients.openai_client import OpenAIClient
-from src.ai_clients.gemini_client import GeminiClient
+from src.characters.ichinose import IchinoseRitu
 from src.database.t_stock_predict_manager import TStockPredictManager
 from src.database.m_stock_manager import MStockManager
 from src.database.t_stock_actual_manager import TStockActualManager
-from src.characters.ichinose import IchinoseRitu
-import csv
-import io
-import random
-import ast
-import math
-from datetime import datetime
-import json
+from src.core.ai_budget_guard import AIBudgetGuard
+from src.core.feature_calculator import FeatureCalculator
+
+
+RANGE_LIMITS = {100: 300000, 1000: 300000, 10000: 400000}
+RANGE_LABEL = {100: '小型株(100円以下)', 1000: '中型株(101〜1000円)', 10000: '大型株(1001〜10000円)'}
+
 
 class StockPredictor:
     def __init__(self):
         self.analysts = get_analysts()
-        self.openai_client = OpenAIClient()
-        self.gemini_client = GeminiClient()
         self.predict_manager = TStockPredictManager()
         self.m_stock_manager = MStockManager()
         self.actual_manager = TStockActualManager()
+        self.guard = AIBudgetGuard()
+        self.feature_calc = FeatureCalculator()
 
-    def create_messages(self, analyst: object, csv_text: str,  yesterday_date: str, tomorrow_date: str) -> List[Dict[str, str]]:
-        """
-        メッセージを作成する
+    def _build_messages(self, analyst, csv_text: str, yesterday_date: str,
+                        tomorrow_date: str, active_ranges: List[int],
+                        ranking_info: Dict = None) -> List[Dict]:
+        range_desc = '\n'.join(
+            f'・{RANGE_LABEL[r]}から1銘柄' for r in active_ranges
+        )
 
-        Args:
-            analyst (object): アナリストのインスタンス
-            stock_data (List[Dict]): 株価データのリスト
-        Returns:
-            List[Dict[str, str]]: チャットメッセージのリスト
-        """
+        strategy_hint = ''
+        if ranking_info:
+            rank = ranking_info.get('rank', 1)
+            total = ranking_info.get('total', 1)
+            gap = ranking_info.get('gap_from_first', 0)
+            if rank == 1:
+                strategy_hint = (
+                    '\nあなたは現在1位です。リードを守るため、安定・低リスクな銘柄を優先してください。'
+                )
+            elif rank == total or gap > 100000:
+                strategy_hint = (
+                    f'\nあなたは現在{rank}位（最下位付近）で、1位との差は{gap:,}円です。'
+                    f'逆転するためにはギャンブル的な高ボラティリティ銘柄を狙ってください。'
+                    f'リスクを恐れず、大きく動きそうな銘柄を選んでください。'
+                )
+            else:
+                strategy_hint = (
+                    f'\nあなたは現在{rank}位で、1位との差は{gap:,}円です。'
+                    f'やや攻めの姿勢で、上昇余地の大きい銘柄を選んでください。'
+                )
 
         return [
             {
-                "role": "system",
-                "content": f"あなたは{analyst.name}です。{analyst.title}として、{analyst.description}"
+                'role': 'system',
+                'content': (
+                    f'あなたは{analyst.name_jp}です。{analyst.title}として、{analyst.description}'
+                ),
             },
             {
-                "role": "user",
-                "content": f"""以下のCSVは{yesterday_date}の株価です：
-                {csv_text}
-
-                以上のCSV内の銘柄から、{tomorrow_date}の終値が最も上がりそうな銘柄を予測してください。
-                あなたの専門分野である{analyst.style}の観点から、特に{analyst.focus}に注目して分析してください。
-
-                以下の条件で銘柄を選んでください：
-                ・株価が100以下の銘柄から3つ
-                ・株価が1000以下の銘柄から3つ
-                ・株価が10000以下の銘柄から3つ
-                合計9つの銘柄を選んでください。
-                CSVに記載されていない銘柄は選ばないでください。
-                ハルシネーションしないでください。
-
-                予想結果はcsv形式で出力してください。
-                csv形式の例：
-                証券コード,銘柄名,予想始値,予想高値,予想安値,予想終値,予想出来高,予測理由
-                
-                ヘッダーは必ず証券コード,銘柄名,予想始値,予想高値,予想安値,予想終値,予想出来高,予測理由としてください。
-                結果はcsvの中身以外は一切出力しないでください。
-                """
-            }
+                'role': 'user',
+                'content': (
+                    f'以下のCSVは{yesterday_date}の株価と特徴量です：\n{csv_text}\n\n'
+                    f'{tomorrow_date}の終値が最も上がりそうな銘柄を予測してください。\n'
+                    f'あなたの専門分野である{analyst.style}の観点から、特に{analyst.focus}に注目して分析してください。'
+                    f'{strategy_hint}\n\n'
+                    f'以下の条件で銘柄を選んでください：\n{range_desc}\n'
+                    f'合計{len(active_ranges)}銘柄を選んでください。\n'
+                    f'CSVに記載されていない銘柄は選ばないでください。\n'
+                    f'ハルシネーションしないでください。\n\n'
+                    f'予想結果はcsv形式で出力してください。\n'
+                    f'csv形式の例：\n'
+                    f'証券コード,銘柄名,予想始値,予想高値,予想安値,予想終値,予想出来高,予測理由\n'
+                    f'ヘッダーは必ず上記の通りにしてください。\n'
+                    f'結果はcsvの中身以外は一切出力しないでください。'
+                ),
+            },
         ]
 
-    def predict(self, yesterday_date: str, tomorrow_date: str) -> None:
+    def predict(self, yesterday_date: str, tomorrow_date: str,
+                active_ranges_by_analyst: Dict[str, List[int]] = None,
+                ranking_by_analyst: Dict[str, Dict] = None) -> None:
         """
-        株価予測を実行する
-        結果をDBに保存する
+        株価予測を実行してDBに保存する。
 
-        Args:
-            date (str): 日付 (YYYY-MM-DD)
-            tomorrow_date (str): 明日の日付 (YYYY-MM-DD)
-
+        active_ranges_by_analyst: {analyst_name: [100, 1000, 10000]} のように
+        キャラクター別の投資可能価格帯を渡す。Noneなら全員3価格帯。
         """
-        # 昨日の株価データを取得
         stock_data = self.actual_manager.get_stock_actual(date_from=yesterday_date)
         if not stock_data:
             print(f"警告: {yesterday_date} の株価データが見つかりません")
             return
 
-        # 株価データをCSV形式の文字列に変換
-        csv_lines = ['証券コード,銘柄名,始値,高値,安値,終値,出来高']
-        for stock in stock_data:
-            csv_lines.append(f"{stock['stock_code']},{stock['stock_name']},{stock['actual_open_price']},{stock['actual_high_price']},{stock['actual_low_price']},{stock['actual_close_price']},{stock['actual_volume']}")
-        csv_text = '\n'.join(csv_lines)
+        # 特徴量CSV（過去20営業日を使った前日比・移動平均・ボラティリティ等）
+        # アナリストごとに active_ranges が異なるため共通の全帯CSVを生成し、
+        # 各アナリストのプロンプトで有効価格帯のみ選択させる
+        all_active = sorted({
+            r
+            for ranges in (active_ranges_by_analyst or {}).values()
+            for r in ranges
+        }) or [100, 1000, 10000]
+        csv_text = self.feature_calc.build_feature_csv(
+            yesterday_date, active_ranges=all_active
+        )
+        if not csv_text:
+            # 特徴量データが不足している場合は基本OHLCにフォールバック
+            print(f"警告: {yesterday_date} の特徴量データが不足しています。基本OHLCで代替します。")
+            csv_lines = ['証券コード,銘柄名,終値,始値,高値,安値,出来高']
+            for s in stock_data:
+                csv_lines.append(
+                    f"{s['stock_code']},{s['stock_name']},{s['actual_close_price']},"
+                    f"{s['actual_open_price']},{s['actual_high_price']},"
+                    f"{s['actual_low_price']},{s['actual_volume']}"
+                )
+            csv_text = '\n'.join(csv_lines)
 
-
-        # 各アナリストの予測を実行
         for analyst in self.analysts:
-            try:
-                #AIからの結果を取得
-                messages = self.create_messages(analyst, csv_text, yesterday_date, tomorrow_date)
-                result = analyst.stock_run(messages)
-                
-                # 結果がNoneの場合
-                if result is None:
-                    print(f"警告: {analyst.name}からの応答がありません")
-                    continue
-                
-                # 空行を削除し、CSV形式を確認
-                lines = []
-                for line in result.splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    # カンマで区切られているかチェック
-                    if ',' in line:
-                        lines.append(line)
-                
-                if not lines:
-                    print(f"警告: {analyst.name}からの応答に有効なCSVデータがありません")
-                    continue
-                
-                # 予測結果をCSVとして解析
-                csv_reader = csv.reader(io.StringIO('\n'.join(lines)))
-                
-                # ヘッダー行を探す
-                header = None
-                rows = list(csv_reader)  # 全行をリストに変換
-                coulums_len = 8
-                for i, row in enumerate(rows):
-                    if len(row) >= coulums_len and row[0] == "証券コード" and row[1] == "銘柄名":
-                        header = row
-                        rows = rows[i+1:]  # ヘッダー以降の行を取得
-                        break
-                
-                if not header:
-                    print(f"警告: {analyst.name}からの応答に正しいヘッダーが見つかりません")
-                    continue
-                
-                # 予測結果をデータベースに保存
-                for row in rows:
-                    if len(row) >= coulums_len:  # 必要な列が存在することを確認
-                        try:
-                            stock_code, stock_name, predicted_open_price, predicted_high_price, predicted_low_price, predicted_close_price, predicted_volume, predicted_reason = row
-                            predicted_open_price = float(predicted_open_price)
-                            predicted_high_price = float(predicted_high_price)
-                            predicted_low_price = float(predicted_low_price)
-                            predicted_close_price = float(predicted_close_price)
-                            predicted_volume = float(predicted_volume)
-                            
-                            # 株価の範囲を設定
-                            if predicted_open_price <= 100:
-                                range = 100
-                            elif predicted_open_price <= 1000:
-                                range = 1000
-                            elif predicted_open_price <= 10000:
-                                range = 10000
-                            else:
-                                range = 100000
-
-                            # 株名をマスタから取得
-                            stock_name = self.m_stock_manager.get_stock_name(stock_code)
-                            if stock_name is None:
-                                stock_name = "不明"
-                                print(f"警告: 銘柄名が見つかりません: {stock_code}")
-
-                            # 予想データベースに保存
-                            self.predict_manager.insert_prediction(
-                                predicted_date=tomorrow_date,
-                                analyst_name=analyst.name,
-                                stock_code=stock_code,
-                                stock_name=stock_name,
-                                range=range,
-                                predicted_open_price=predicted_open_price,
-                                predicted_high_price=predicted_high_price,
-                                predicted_low_price=predicted_low_price,
-                                predicted_close_price=predicted_close_price,
-                                predicted_volume=predicted_volume,
-                                prediction_reason=predicted_reason
-                            )
-                        except ValueError:
-                            print(f"警告: 無効なデータ形式をスキップしました: {row}")
-                            continue
-            except Exception as e:
-                print(f"エラー: {analyst.name}の処理中にエラーが発生しました: {str(e)}")
-                continue 
-
-        #一ノ瀬メソッド発動
-        try:
-            ritu = IchinoseRitu()
-            ritu_messages = [
-                {
-                    "role": "system",
-                    "content": f"あなたは{ritu.name}です。{ritu.title}。{ritu.description}"
-                },
-                {
-                    "role": "user",
-                    "content": f"""勘で選んだわ！今日はお腹が減ってたから！の様な判断材料になっていない事9個いって
-                    セリフ以外はいりません。
-                    毎回言う事は変えてください。
-                    結果は、配列形式でください。
-                    """
-                }
-            ]
-            # 一ノ瀬の理由を取得
-            ritu_reason = ritu.stock_run(ritu_messages)
-
-            # 文字列の場合は配列に変換
-            if isinstance(ritu_reason, str):
-                # 改行で分割して配列形式の行を探す
-                lines = ritu_reason.split('\n')
-                
-                # コードブロック内の配列を探す
-                in_code_block = False
-                array_content = []
-                for line in lines:
-                    line = line.strip()
-                    if line.startswith('```'):
-                        in_code_block = not in_code_block
-                        continue
-                    if in_code_block and line.startswith('['):
-                        array_content.append(line)
-                    elif in_code_block and line.endswith(']'):
-                        array_content.append(line)
-                    elif in_code_block and array_content:
-                        array_content.append(line)
-                
-                if array_content:
-                    try:
-                        # 配列の内容を結合
-                        array_str = ''.join(array_content)
-                        # 配列の中身だけを抽出
-                        array_str = array_str.strip('[]')
-                        # 各行を配列に変換
-                        reasons = [reason.strip().strip('"') for reason in array_str.split(',')]
-                        ritu_reason = reasons
-                    except Exception as e:
-                        print(f"エラー: {str(e)}")
-                        ritu_reason = []
-                else:
-                    ritu_reason = []
-            # 配列でない場合は空配列に変換
-            elif not isinstance(ritu_reason, list):
-                ritu_reason = []
-            
-            # 理由が空の場合はデフォルトの理由を使用
-            if not ritu_reason:
-                ritu_reason = ["お腹が減った", "眠い", "疲れた", "暇だった", "気分が良かった", 
-                             "天気が良かった", "運が良かった", "勘が冴えていた", "直感が当たった"]
-            
-            # 9個になるまで理由を繰り返し
-            original_reasons = ritu_reason.copy()  # 元の理由を保存
-            while len(ritu_reason) < 9:
-                ritu_reason.append(original_reasons[len(ritu_reason) % len(original_reasons)])
-            
-            # 9個に制限
-            ritu_reason = ritu_reason[:9]
-
-            # 株価範囲ごとに銘柄を抽出
-            stocks_100 = [{'stock_code': stock['stock_code'], 'stock_name': stock['stock_name'], 'actual_open_price': stock['actual_open_price'], 'range': 100} 
-                         for stock in stock_data if stock['actual_open_price'] <= 100]
-            stocks_1000 = [{'stock_code': stock['stock_code'], 'stock_name': stock['stock_name'], 'actual_open_price': stock['actual_open_price'], 'range': 1000} 
-                          for stock in stock_data if 100 < stock['actual_open_price'] <= 1000]
-            stocks_10000 = [{'stock_code': stock['stock_code'], 'stock_name': stock['stock_name'], 'actual_open_price': stock['actual_open_price'], 'range': 10000} 
-                           for stock in stock_data if 1000 < stock['actual_open_price'] <= 10000]
-
-            # 各範囲から3つずつランダムに選択
-            selected_stocks = (
-                random.sample(stocks_100, min(3, len(stocks_100))) +
-                random.sample(stocks_1000, min(3, len(stocks_1000))) +
-                random.sample(stocks_10000, min(3, len(stocks_10000)))
+            active_ranges = (
+                active_ranges_by_analyst.get(analyst.name, [100, 1000, 10000])
+                if active_ranges_by_analyst
+                else [100, 1000, 10000]
             )
+            if not active_ranges:
+                print(f"{analyst.name_jp}: 投資可能な価格帯がありません")
+                continue
 
-            for i, stock in enumerate(selected_stocks):
-                # 乱数を予測値とする
-                current_price = stock['actual_open_price']
-                predicted_open_price = math.floor(current_price * random.uniform(1.001, 1.5))
-                predicted_low_price = math.floor(current_price * random.uniform(1.001, 1.5))
-                predicted_close_price = math.floor(current_price * random.uniform(1.001, 1.5))
-                predicted_volume = math.floor(current_price * random.uniform(1.001, 1.5))
+            try:
+                ranking_info = (
+                    ranking_by_analyst.get(analyst.name) if ranking_by_analyst else None
+                )
+                messages = self._build_messages(
+                    analyst, csv_text, yesterday_date, tomorrow_date, active_ranges,
+                    ranking_info=ranking_info,
+                )
+                result = self.guard.execute(
+                    analyst.stock_run, messages,
+                    call_type='prediction', model=analyst.model,
+                )
+                if not result:
+                    print(f"警告: {analyst.name_jp} からの応答がありません（予算上限またはエラー）")
+                    continue
 
-                if predicted_open_price > predicted_close_price :
-                    high_price = predicted_open_price
-                    low_price = predicted_close_price
-                else :
-                    high_price = predicted_close_price
-                    low_price = predicted_open_price
+                self._save_predictions(result, analyst, tomorrow_date, yesterday_date, active_ranges)
 
-                predicted_high_price = math.floor(high_price * random.uniform(1.001, 1.5))
-                predicted_low_price = math.floor(low_price * random.uniform(1.000, 0.6))
+            except Exception as e:
+                print(f"エラー: {analyst.name_jp} の処理中にエラー: {e}")
+                continue
+
+        # 一ノ瀬律（ランダム枠）
+        ritu_ranges = (
+            active_ranges_by_analyst.get('ritu', [100, 1000, 10000])
+            if active_ranges_by_analyst
+            else [100, 1000, 10000]
+        )
+        self._predict_ritu(stock_data, tomorrow_date, ritu_ranges)
+
+    def _save_predictions(self, result: str, analyst, tomorrow_date: str,
+                          yesterday_date: str, active_ranges: List[int]) -> None:
+        lines = [l.strip() for l in result.splitlines() if ',' in l.strip()]
+        if not lines:
+            print(f"警告: {analyst.name_jp} の応答に有効なCSVデータがありません")
+            return
+
+        rows = list(csv.reader(io.StringIO('\n'.join(lines))))
+        header = None
+        for i, row in enumerate(rows):
+            if len(row) >= 8 and row[0] == '証券コード':
+                header = row
+                rows = rows[i + 1:]
+                break
+
+        if not header:
+            print(f"警告: {analyst.name_jp} の応答に正しいヘッダーがありません")
+            return
+
+        saved_ranges = set()
+        for row in rows:
+            if len(row) < 8:
+                continue
+            try:
+                stock_code = row[0].strip()
+                predicted_open = float(row[2])
+                predicted_high = float(row[3])
+                predicted_low = float(row[4])
+                predicted_close = float(row[5])
+                predicted_volume = float(row[6])
+                reason = row[7].strip()
+
+                # 価格帯判定は予測始値ではなく前日終値（実際の買値基準）で行う
+                actual_records = self.actual_manager.get_stock_actual(
+                    stock_code=stock_code,
+                    date_from=yesterday_date,
+                    date_to=yesterday_date,
+                )
+                if actual_records:
+                    base_price = actual_records[0].get('actual_close_price') or predicted_open
+                else:
+                    base_price = predicted_open
+
+                price_range = self._classify_range(base_price)
+                if price_range not in active_ranges:
+                    continue
+                if price_range in saved_ranges:
+                    continue
+
+                stock_name = self.m_stock_manager.get_stock_name(stock_code) or '不明'
+                self.predict_manager.insert_prediction(
+                    predicted_date=tomorrow_date,
+                    analyst_name=analyst.name,
+                    stock_code=stock_code,
+                    stock_name=stock_name,
+                    range=price_range,
+                    predicted_open_price=predicted_open,
+                    predicted_high_price=predicted_high,
+                    predicted_low_price=predicted_low,
+                    predicted_close_price=predicted_close,
+                    predicted_volume=predicted_volume,
+                    prediction_reason=reason,
+                )
+                saved_ranges.add(price_range)
+
+            except (ValueError, IndexError):
+                continue
+
+    def _predict_ritu(self, stock_data: List[Dict], tomorrow_date: str,
+                      active_ranges: List[int]) -> None:
+        ritu = IchinoseRitu()
+        try:
+            ritu_reason = self._get_ritu_reasons(ritu, len(active_ranges))
+
+            buckets = {
+                100: [s for s in stock_data if s['actual_open_price'] <= 100],
+                1000: [s for s in stock_data if 100 < s['actual_open_price'] <= 1000],
+                10000: [s for s in stock_data if 1000 < s['actual_open_price'] <= 10000],
+            }
+
+            for i, price_range in enumerate(active_ranges):
+                bucket = buckets.get(price_range, [])
+                if not bucket:
+                    continue
+                stock = random.choice(bucket)
+                cp = stock['actual_open_price']
+                po = math.floor(cp * random.uniform(1.001, 1.5))
+                pc = math.floor(cp * random.uniform(1.001, 1.5))
+                ph = math.floor(max(po, pc) * random.uniform(1.001, 1.3))
+                pl = math.floor(min(po, pc) * random.uniform(0.7, 0.999))
+                pv = math.floor(stock['actual_volume'] * random.uniform(0.8, 1.5))
 
                 self.predict_manager.insert_prediction(
                     predicted_date=tomorrow_date,
                     analyst_name=ritu.name,
                     stock_code=stock['stock_code'],
                     stock_name=stock['stock_name'],
-                    range=stock['range'],
-                    predicted_open_price=predicted_open_price,
-                    predicted_high_price=predicted_high_price,
-                    predicted_low_price=predicted_low_price,
-                    predicted_close_price=predicted_close_price,
-                    predicted_volume=predicted_volume,
-                    prediction_reason=ritu_reason[i]
+                    range=price_range,
+                    predicted_open_price=po,
+                    predicted_high_price=ph,
+                    predicted_low_price=pl,
+                    predicted_close_price=pc,
+                    predicted_volume=pv,
+                    prediction_reason=ritu_reason[i] if i < len(ritu_reason) else '勘！',
                 )
         except Exception as e:
-            print(f"エラー: {ritu.name}の処理中にエラーが発生しました: {str(e)}")
+            print(f"エラー: 一ノ瀬律の処理中にエラー: {e}")
+
+    def _get_ritu_reasons(self, ritu: IchinoseRitu, count: int) -> List[str]:
+        default = [
+            'お腹が減ってたから', '眠かったから', '疲れてたから',
+            '暇だったから', '気分が良かったから', '天気が良かったから',
+            '運が良さそうだったから', '勘が冴えてたから', '直感！',
+        ]
+        try:
+            messages = [
+                {'role': 'system',
+                 'content': f'あなたは{ritu.name_jp}です。{ritu.title}。{ritu.description}'},
+                {'role': 'user',
+                 'content': (
+                     f'「勘で選んだ！今日はお腹減ってたから！」のような、判断材料にならない理由を{count}個言って。'
+                     f'セリフ以外いらない。毎回変えて。JSON配列形式で返して。例: ["理由1","理由2"]'
+                 )},
+            ]
+            raw = self.guard.execute(
+                ritu.stock_run, messages,
+                call_type='ritu_reason', model='gemini',
+            )
+            import json, re
+            m = re.search(r'\[.*?\]', raw, re.DOTALL)
+            if m:
+                reasons = json.loads(m.group())
+                if isinstance(reasons, list) and reasons:
+                    return [str(r).strip('"') for r in reasons[:count]]
+        except Exception:
+            pass
+        return default[:count]
+
+    @staticmethod
+    def _classify_range(price: float) -> int:
+        if price <= 100:
+            return 100
+        elif price <= 1000:
+            return 1000
+        elif price <= 10000:
+            return 10000
+        return 100000
