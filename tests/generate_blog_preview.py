@@ -298,7 +298,8 @@ def generate_girls_talk() -> list:
         system=PromptLoader.base_system() + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}',
         user=(f'今日の仮想投資結果：\n{summary}\n順位：{ranking_txt}\n\n'
               f'3人が今日の結果について1行ずつ会話する「反省会」シーンを書いてください。'
-              f'各キャラの性格が出るようにしてください。\n'
+              f'各キャラが自分の成績だけでなく、他2人の成績と比較しながら話すようにしてください。\n'
+              f'（例：勝ったキャラは負けたキャラをいじる、負けたキャラは勝ったキャラに悔しがる）\n'
               f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
               f'[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]'),
     )
