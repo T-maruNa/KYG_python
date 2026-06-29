@@ -294,6 +294,9 @@ def build_html() -> str:
     body = '\n'.join([
         f'<h1>【AI投資バトル】{SAMPLE_TRADE_DATE} 結果発表</h1>',
         f'<p style="color:#888;font-size:0.9em;">※ これはサンプルデータによるプレビューです（{SAMPLE_TRADE_DATE}生成）</p>',
+        '<p style="font-size:0.9em;color:#666;background:#f9f9f9;border-left:4px solid #ccc;'
+        'padding:0.5em 1em;margin-bottom:1.5em;">'
+        'この記事は、AIキャラクターによる投資シミュレーション企画です。実際の売買を行ったものではありません。</p>',
         s_result,
         s_rank,
         s_entry,

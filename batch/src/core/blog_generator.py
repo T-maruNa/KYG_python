@@ -100,6 +100,9 @@ class BlogGenerator:
                 }
 
         sections = [
+            '<p style="font-size:0.9em;color:#666;background:#f9f9f9;border-left:4px solid #ccc;'
+            'padding:0.5em 1em;margin-bottom:1.5em;">'
+            'この記事は、AIキャラクターによる投資シミュレーション企画です。実際の売買を行ったものではありません。</p>',
             self._section_result(result_date, daily, prev_entries, ranking_by_analyst),
             self._section_ranking(ranking or [], year_month),
             self._section_today_entry(trade_date, today_entries),
