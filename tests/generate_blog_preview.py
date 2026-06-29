@@ -169,7 +169,12 @@ def section_ranking() -> str:
         diff = r['current_balance'] - r['initial_balance']
         sign = '+' if diff >= 0 else ''
         name_jp = ANALYST_PROFILES[r['analyst_name']]['name_jp']
-        html += f'  <li>{name_jp}: {r["current_balance"]:,}円 ({sign}{diff:,}円)</li>\n'
+        html += (
+            f'  <li>'
+            f'<div class="img-placeholder img-small">🖼️ {name_jp}<br><small>※ 結果によって変動</small></div>'
+            f' {name_jp}: {r["current_balance"]:,}円 ({sign}{diff:,}円)'
+            f'</li>\n'
+        )
     html += '</ol>\n'
 
     for i, r in enumerate(SAMPLE_RANKING):
@@ -267,6 +272,7 @@ CSS = '''
   .img-placeholder { display: inline-block; width: 200px; padding: 1em; background: #f0f0f0; border: 2px dashed #aaa; border-radius: 8px; text-align: center; color: #666; font-size: 0.9em; margin: 0.5em 0; }
   .img-small { width: 100px; padding: 0.5em; font-size: 0.8em; }
   .character-inline { display: flex; align-items: flex-start; gap: 1em; margin: 0.5em 0; }
+  ol li { display: flex; align-items: center; gap: 0.8em; margin: 0.4em 0; list-style-position: inside; }
   table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
   th { background: #0f3460; color: white; padding: 8px; }
   td { padding: 6px 8px; border: 1px solid #ddd; }
