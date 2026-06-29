@@ -19,25 +19,38 @@ class TBlogPostHistoryManager(DBManager):
 
     def insert(self, post_date: str, post_type: str = 'daily',
                title: str = None, content: str = None,
-               wp_post_id: Optional[int] = None, status: str = 'pending') -> bool:
+               wp_post_id: Optional[int] = None, wp_post_url: str = None,
+               status: str = 'pending') -> bool:
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO t_blog_post_history
-                        (post_date, post_type, title, content, wp_post_id, status)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                        (post_date, post_type, title, content, wp_post_id, wp_post_url, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (post_date, post_type) DO UPDATE SET
                         title       = EXCLUDED.title,
                         content     = EXCLUDED.content,
                         wp_post_id  = EXCLUDED.wp_post_id,
+                        wp_post_url = EXCLUDED.wp_post_url,
                         status      = EXCLUDED.status,
                         update_date = CURRENT_TIMESTAMP
-                ''', (post_date, post_type, title, content, wp_post_id, status))
+                ''', (post_date, post_type, title, content, wp_post_id, wp_post_url, status))
                 return True
         except Exception as e:
             print(f'ブログ投稿履歴登録エラー: {e}')
             return False
+
+    def get_post_url(self, post_date: str, post_type: str) -> Optional[str]:
+        """指定日・タイプの wp_post_url を返す。未登録の場合は None。"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT wp_post_url FROM t_blog_post_history
+                WHERE post_date = %s AND post_type = %s
+            ''', (post_date, post_type))
+            row = cursor.fetchone()
+            return row['wp_post_url'] if row else None
 
     def update_status(self, post_date: str, post_type: str,
                       status: str, wp_post_id: Optional[int] = None) -> None:

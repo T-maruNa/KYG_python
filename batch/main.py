@@ -34,6 +34,7 @@ from src.api.wordpress_client import WordPressClient
 from src.database.t_stock_actual_manager import TStockActualManager
 from src.database.t_stock_predict_manager import TStockPredictManager
 from src.database.t_blog_post_history_manager import TBlogPostHistoryManager
+from src.database.t_investment_history_manager import TInvestmentHistoryManager
 from src.core.ai_budget_guard import AIBudgetGuard
 
 # ------------------------------------------------------------------
@@ -41,6 +42,7 @@ from src.core.ai_budget_guard import AIBudgetGuard
 # ------------------------------------------------------------------
 DRY_RUN = '--dry-run' in sys.argv
 BACKFILL = '--backfill' in sys.argv
+EVENING_RUN = '--evening' in sys.argv
 
 
 def _is_business_day(d: date) -> bool:
@@ -110,6 +112,60 @@ if not BACKFILL:
 # DB初期化
 # ------------------------------------------------------------------
 initialize_db()
+
+# ------------------------------------------------------------------
+# 夜バッチモード（--evening）
+# ------------------------------------------------------------------
+if EVENING_RUN:
+    actual_manager = TStockActualManager()
+    history_manager = TInvestmentHistoryManager()
+    if not DRY_RUN and not actual_manager.get_stock_actual(date_from=formatted_today, date_to=formatted_today):
+        StockYFinance().set_stock_prices(formatted_today)
+        StockYFinanceFull().set_stock_prices(formatted_today)
+
+    verifier = ResultVerifier()
+    verifier.verify(formatted_today, year_month)
+
+    aggregator = StatsAggregator()
+    daily_summary = aggregator.get_daily_summary(formatted_today)
+    ranking = aggregator.get_ranking(year_month)
+
+    blog_gen = BlogGenerator()
+    blog_history = TBlogPostHistoryManager()
+
+    if not blog_history.exists(formatted_today, 'result_daily'):
+        morning_url = blog_history.get_post_url(formatted_today, 'prediction_daily')
+        result_title, result_content = blog_gen.generate_result(
+            result_date=formatted_today,
+            trade_date=formatted_today,
+            year_month=year_month,
+            ranking=ranking,
+            morning_post_url=morning_url,
+        )
+        errors = blog_gen.check(result_content, [])
+        if errors:
+            print(f'夜記事チェックNG: {errors}')
+        elif DRY_RUN:
+            print(f'\n[DRY-RUN] 夜記事プレビュー: {result_title}')
+            print(result_content)
+        else:
+            wp = WordPressClient()
+            result = wp.post(result_title, result_content, formatted_today,
+                             scheduled_hour=22,
+                             tags=['鷲見玲', '桜庭みらい', '一ノ瀬律', 'AI投資バトル', '結果発表'])
+            if result:
+                blog_history.insert(formatted_today, 'result_daily',
+                                    title=result_title, content=result_content,
+                                    wp_post_id=result['id'], wp_post_url=result.get('url'),
+                                    status='scheduled')
+            else:
+                blog_history.insert(formatted_today, 'result_daily',
+                                    title=result_title, content=result_content, status='failed')
+    else:
+        print(f'夜記事スキップ: {formatted_today} は投稿済み')
+
+    print(f'=== 夜バッチ完了 {formatted_today} ===')
+    sys.exit(0)
 
 # ------------------------------------------------------------------
 # バックフィルモード
@@ -215,55 +271,46 @@ if is_last_business_day:
     aggregator.finalize_month(year_month)
 
 # ------------------------------------------------------------------
-# 8. ブログ本文生成
+# 8. 朝記事生成（朝の作戦会議）
 # ------------------------------------------------------------------
 blog_gen = BlogGenerator()
 blog_history = TBlogPostHistoryManager()
 
-if not blog_history.exists(formatted_today, 'daily'):
-    print('\nブログ本文生成中...')
-    content = blog_gen.generate_daily(
-        result_date=formatted_prev_day,
+if not blog_history.exists(formatted_today, 'prediction_daily'):
+    print('\n朝記事生成中...')
+    _entry_history_manager = TInvestmentHistoryManager()
+    today_entries = _entry_history_manager.get_by_date(formatted_trade_date)
+    pred_title, pred_content = blog_gen.generate_prediction(
         trade_date=formatted_trade_date,
-        year_month=year_month,
+        today_entries=today_entries,
         ranking=ranking,
     )
-    title = f'【AI投資バトル】{formatted_today} 結果発表'
-
-    errors = blog_gen.check(content, actual_manager.get_stock_actual(
-        date_from=formatted_next_day, date_to=formatted_next_day
-    ))
+    errors = blog_gen.check(pred_content, [])
     if errors:
-        print(f'ブログチェックNG: {errors}')
+        print(f'朝記事チェックNG: {errors}')
     elif DRY_RUN:
-        # DRY-RUN: 本文をコンソールに出力してWP投稿はスキップ
-        print('\n' + '=' * 60)
-        print(f'[DRY-RUN] ブログ本文プレビュー: {title}')
-        print('=' * 60)
-        print(content)
-        print('=' * 60)
+        print(f'\n[DRY-RUN] 朝記事プレビュー: {pred_title}')
+        print(pred_content)
     else:
         # ------------------------------------------------------------------
-        # 9. WordPress投稿
+        # 9. WordPress投稿（朝記事）
         # ------------------------------------------------------------------
         wp = WordPressClient()
-        if wp.exists_post(formatted_today):
-            print(f'WordPress投稿スキップ: {formatted_today} は投稿済み')
-            blog_history.insert(formatted_today, 'daily', title=title,
-                                content=content, status='skipped')
+        result = wp.post(pred_title, pred_content, formatted_today,
+                         scheduled_hour=8,
+                         tags=['鷲見玲', '桜庭みらい', '一ノ瀬律', 'AI投資バトル', '作戦会議'])
+        if result:
+            blog_history.insert(formatted_today, 'prediction_daily',
+                                title=pred_title, content=pred_content,
+                                wp_post_id=result['id'], wp_post_url=result.get('url'),
+                                status='scheduled')
+            print(f'朝記事WordPress投稿完了: post_id={result["id"]}')
         else:
-            wp_id = wp.post(title, content, formatted_today, dry_run=False)
-            if wp_id is not None:
-                blog_history.insert(formatted_today, 'daily', title=title,
-                                    content=content, wp_post_id=wp_id,
-                                    status='scheduled')
-                print(f'WordPress投稿完了: post_id={wp_id}')
-            else:
-                blog_history.insert(formatted_today, 'daily', title=title,
-                                    content=content, status='failed')
-                print('WordPress投稿失敗')
+            blog_history.insert(formatted_today, 'prediction_daily',
+                                title=pred_title, content=pred_content, status='failed')
+            print('朝記事WordPress投稿失敗')
 else:
-    print(f'ブログ投稿スキップ: {formatted_today} は投稿済み')
+    print(f'朝記事スキップ: {formatted_today} は投稿済み')
 
 # 月末なら月次まとめ記事も投稿
 if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
@@ -280,12 +327,12 @@ if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
                 print('=' * 60)
             else:
                 wp = WordPressClient()
-                wp_id = wp.post(monthly_title, monthly_content, formatted_today,
-                                dry_run=False)
+                monthly_result = wp.post(monthly_title, monthly_content, formatted_today)
                 blog_history.insert(formatted_today, 'monthly',
                                     title=monthly_title, content=monthly_content,
-                                    wp_post_id=wp_id,
-                                    status='scheduled')
+                                    wp_post_id=monthly_result['id'] if monthly_result else None,
+                                    wp_post_url=monthly_result.get('url') if monthly_result else None,
+                                    status='scheduled' if monthly_result else 'failed')
 
 # ------------------------------------------------------------------
 # 10. AI予算使用状況を表示

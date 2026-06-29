@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from src.database.t_daily_result_manager import TDailyResultManager
 from src.database.t_investment_history_manager import TInvestmentHistoryManager
 from src.database.t_monthly_result_manager import TMonthlyResultManager
@@ -16,33 +16,39 @@ ANALYST_PROFILES = {
         'name_short': '玲',
         'role': 'テクニカル担当',
         'personality': (
-            '落ち着いたテクニカル分析派の女性。敬語で話す。冷静だがたまにドヤる。'
-            '負けても取り乱さず次の分析に切り替える。口癖は「流れを拾う」。'
+            'メガネをかけた落ち着いた大人女子。テクニカル分析派。敬語で話す。冷静だがたまにドヤる。'
+            '負けても取り乱さず次の分析に切り替える。「分析ノートを閉じる」「メガネを直す」「静かに微笑む」'
+            '「流れを拾う」が口癖。勝つと少しだけ嬉しさが漏れる。'
         ),
+        'visual': 'メガネ、大人女子、知的、静かに強い',
     },
     'mirai': {
         'name_jp': '桜庭 みらい',
         'name_short': 'みらい',
         'role': 'ファンダメンタル担当',
         'personality': (
-            '明るくポジティブな女性。話題性・雰囲気重視。カフェが好き。'
-            '外すと「えー、なんでー？」と焦り笑いする。読者との距離が近い。'
+            '背が低めのリクルートスーツ姿の新社会人。明るくポジティブ。話題性・雰囲気重視。'
+            '外すと「えー、なんでー？」とあせり笑いする。読者との距離が近い。'
+            '小柄だけど一生懸命で背伸びして頑張る。カフェでスマホや雑誌を見ながら情報収集する。'
         ),
+        'visual': '背が低い、リクルートスーツ、新社会人感、初々しい',
     },
     'ritu': {
         'name_jp': '一ノ瀬 律',
         'name_short': '律',
         'role': '直感担当',
         'personality': (
-            '豪快な金髪ギャル。敬語は使わない。勘で投資する。勝つと一番派手に喜ぶ。'
-            '負けるとしょんぼりするが立ち直りも早い。「きたきた！」が口癖。'
+            '金髪ギャル。敬語は使わない。勘で投資する。勝つと一番派手に喜ぶ。'
+            '負けるとしょんぼりするが立ち直りも早い。「きたきたきた！」が口癖。'
+            'アゲアゲ系で場を盛り上げる。サイコロネタが好き。'
         ),
+        'visual': '金髪ギャル、ネイル、アクセサリー',
     },
 }
 
 FORBIDDEN_PHRASES = [
     '絶対', '確実', '必ず上がる', '買うべき', '儲かる', '保証', '推奨銘柄',
-    '狙い目', '今が買い', 'おすすめ銘柄',
+    '狙い目', '今が買い', 'おすすめ銘柄', '仕込み時', '勝てる銘柄',
 ]
 
 DISCLAIMER = (
@@ -113,6 +119,20 @@ BATTLE_CSS = '''<style>
 .mvp-count{font-size:.85rem;color:#7a6b80;}
 /* 免責 */
 .disclaimer-box{font-size:.86rem;color:#7a7280;background:#fafafa;border-radius:16px;padding:14px 16px;margin-top:32px;border:1px solid #eee;}
+/* 朝記事 */
+.strategy-talk{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
+.strategy-talk h2::before{content:"☀️ ";font-style:normal;}
+.spotlight-card{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:18px;padding:16px 20px;margin:16px 0;border:1px solid #f0ddea;}
+.spotlight-card h3::before{content:"👀 ";}
+.result-teaser{background:linear-gradient(135deg,#f3f8ff,#fff7fb);border-radius:18px;padding:16px 20px;margin:24px 0;text-align:center;border:1px solid #e0e8f5;font-size:.95rem;color:#4b3b57;}
+/* 夜記事 */
+.push-points{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
+.push-points h2::before{content:"💕 ";font-style:normal;}
+.push-item{border-radius:14px;padding:10px 14px;margin:8px 0;font-size:.95rem;}
+.push-item.rei{background:#e8f2ff;border-left:4px solid #7aabdf;}
+.push-item.mirai{background:#fff0f5;border-left:4px solid #f0a0c0;}
+.push-item.ritu{background:#fffadb;border-left:4px solid #f5cc50;}
+.morning-link{background:#f5f5f5;border-radius:14px;padding:12px 16px;margin:16px 0;font-size:.88rem;color:#666;text-align:center;}
 @media(max-width:640px){
   .battle-hero{padding:20px 16px;border-radius:20px;}
   .character-card,.today-hero,.girls-talk{padding:16px;}
@@ -182,15 +202,64 @@ class BlogGenerator:
         self.guard = AIBudgetGuard()
 
     # ------------------------------------------------------------------
-    # 日次記事
+    # 朝記事
     # ------------------------------------------------------------------
 
-    def generate_daily(self, result_date: str, trade_date: str, year_month: str,
-                       ranking: List[Dict] = None) -> str:
+    def generate_prediction(self, trade_date: str, today_entries: List[Dict],
+                            ranking: List[Dict] = None) -> Tuple[str, str]:
+        """朝8時の作戦会議記事を生成する。"""
+        ranking = ranking or []
+
+        opening = self._generate_morning_opening(today_entries, ranking)
+        subtitle = opening.get('subtitle', '今日の3人のエントリー')
+        lead = opening.get('lead', '今日も3人の勝負が始まります。')
+        talk_lines = opening.get('talk_lines', [
+            {'name': 'rei',   'line': '流れを拾っていきます。'},
+            {'name': 'mirai', 'line': '今日もいけそうな気がする！'},
+            {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
+        ])
+
+        spotlight_text = self._generate_spotlight(today_entries, ranking)
+
+        title = f'【AI投資バトル】{trade_date} 朝の作戦会議｜{subtitle}'
+
+        hero_html = (
+            f'<div class="battle-hero">'
+            f'<p class="battle-label">AI Virtual Investment Battle</p>'
+            f'<h1>{title}</h1>'
+            f'<p class="battle-lead">{lead}</p>'
+            f'</div>'
+        )
+        notice = (
+            '<p class="sim-notice">この記事は、AIキャラクターによる投資シミュレーション企画です。'
+            '実際の売買を行ったものではありません。</p>'
+        )
+
+        sections = [
+            BATTLE_CSS,
+            '<section class="battle-article">',
+            hero_html,
+            notice,
+            self._section_strategy_talk(talk_lines),
+            self._section_morning_entry(trade_date, today_entries),
+            self._section_spotlight(spotlight_text),
+            self._section_result_teaser(trade_date),
+            DISCLAIMER,
+            '</section>',
+        ]
+        content = '\n'.join(sections)
+        return title, content
+
+    # ------------------------------------------------------------------
+    # 夜記事
+    # ------------------------------------------------------------------
+
+    def generate_result(self, result_date: str, trade_date: str, year_month: str,
+                        ranking: List[Dict] = None,
+                        morning_post_url: str = None) -> Tuple[str, str]:
+        """夜22時の結果発表記事を生成する。"""
         daily = self.daily_manager.get_by_date(result_date)
-        ranking = self.stats.get_ranking(year_month)
-        prev_entries = self.history_manager.get_by_date(result_date)
-        today_entries = self.history_manager.get_by_date(trade_date)
+        ranking = ranking or self.stats.get_ranking(year_month)
         cumulative_mvp = self.monthly_manager.get_cumulative_mvp()
 
         ranking_by_analyst = {}
@@ -205,15 +274,20 @@ class BlogGenerator:
 
         hero_char = _get_today_hero(daily)
 
-        # ナレーション生成（AIコール優先度: 高）
-        lead = self._generate_lead(daily, ranking or [])
-        girls_talk_lines = self._generate_girls_talk(daily, ranking or [])
-        next_hook = self._generate_next_hook(daily, ranking or [])
+        opening = self._generate_result_opening(daily, ranking)
+        drama_subtitle = opening.get('subtitle', '今日の結果発表')
+        lead = opening.get('lead', '今日の勝負結果をお伝えします。')
 
-        hero = (
+        girls_talk_lines = self._generate_girls_talk(daily, ranking)
+        push_points = self._generate_push_points(daily)
+        next_hook = self._generate_next_hook(daily, ranking)
+
+        title = f'【AI投資バトル】{result_date} 結果発表｜{drama_subtitle}'
+
+        hero_html = (
             f'<div class="battle-hero">'
             f'<p class="battle-label">AI Virtual Investment Battle</p>'
-            f'<h1>【AI投資バトル】{trade_date} 今日の勝負結果</h1>'
+            f'<h1>{title}</h1>'
             f'<p class="battle-lead">{lead}</p>'
             f'</div>'
         )
@@ -222,22 +296,41 @@ class BlogGenerator:
             '実際の売買を行ったものではありません。</p>'
         )
 
+        ranking_narrative = self._generate_ranking_narrative(ranking)
+
         sections = [
             BATTLE_CSS,
             '<section class="battle-article">',
-            hero,
+            self._section_morning_link(morning_post_url),
+            hero_html,
             notice,
             self._section_today_hero(hero_char, daily),
-            self._section_result(result_date, daily, prev_entries, ranking_by_analyst),
-            self._section_ranking(ranking or [], year_month),
-            self._section_today_entry(trade_date, today_entries),
+            self._section_result(result_date, daily, [], ranking_by_analyst),
             self._section_girls_talk(girls_talk_lines, daily),
+            self._section_ranking(ranking, year_month, narrative=ranking_narrative),
+            self._section_push_points(push_points),
             f'<p class="next-hook">{next_hook}</p>',
             self._section_cumulative(cumulative_mvp),
             DISCLAIMER,
             '</section>',
         ]
-        return '\n'.join(sections)
+        content = '\n'.join(sections)
+        return title, content
+
+    # ------------------------------------------------------------------
+    # 後方互換エイリアス
+    # ------------------------------------------------------------------
+
+    def generate_daily(self, result_date: str, trade_date: str, year_month: str,
+                       ranking: List[Dict] = None) -> str:
+        """後方互換エイリアス。generate_result() を呼び出して本文文字列を返す。"""
+        _, content = self.generate_result(
+            result_date=result_date,
+            trade_date=trade_date,
+            year_month=year_month,
+            ranking=ranking,
+        )
+        return content
 
     # ------------------------------------------------------------------
     # 月次まとめ記事
@@ -290,7 +383,73 @@ class BlogGenerator:
         return errors
 
     # ------------------------------------------------------------------
-    # 内部セクション
+    # 内部セクション — 朝記事
+    # ------------------------------------------------------------------
+
+    def _section_strategy_talk(self, talk_lines: List[Dict]) -> str:
+        if not talk_lines:
+            return ''
+        html = (
+            '<section class="strategy-talk">\n'
+            '<h2>今日の作戦会議</h2>\n'
+        )
+        for line in talk_lines:
+            name = line.get('name', '')
+            text = line.get('line', '')
+            profile = ANALYST_PROFILES.get(name, {'name_short': name})
+            short = profile.get('name_short', name)
+            html += f'<div class="talk-line {name}">{short}「{text}」</div>\n'
+        html += '</section>\n'
+        return html
+
+    def _section_morning_entry(self, trade_date: str, entries: List[Dict]) -> str:
+        return self._section_today_entry(trade_date, entries)
+
+    def _section_spotlight(self, text: str) -> str:
+        return (
+            f'<section class="spotlight-card">'
+            f'<h3>今日の注目キャラ</h3>'
+            f'<p>{text}</p>'
+            f'</section>\n'
+        )
+
+    def _section_result_teaser(self, trade_date: str) -> str:
+        return (
+            '<div class="result-teaser">'
+            'この勝負の結果は、今夜22時ごろに発表予定です。<br>'
+            'お楽しみに！'
+            '</div>\n'
+        )
+
+    def _section_morning_link(self, url: str = None) -> str:
+        if not url:
+            return ''
+        return (
+            f'<div class="morning-link">📋 <a href="{url}">朝の作戦会議はこちら</a></div>\n'
+        )
+
+    # ------------------------------------------------------------------
+    # 内部セクション — 夜記事
+    # ------------------------------------------------------------------
+
+    def _section_push_points(self, push_points: List[Dict]) -> str:
+        if not push_points:
+            return ''
+        html = (
+            '<section class="push-points">\n'
+            '<h2>今日の推しポイント</h2>\n'
+        )
+        for item in push_points:
+            name = item.get('name', '')
+            point = item.get('point', '')
+            profile = ANALYST_PROFILES.get(name, {'name_short': name})
+            short = profile.get('name_short', name)
+            html += f'<div class="push-item {name}">{short}：{point}</div>\n'
+        html += '</section>\n'
+        return html
+
+    # ------------------------------------------------------------------
+    # 内部セクション — 共通
     # ------------------------------------------------------------------
 
     def _section_today_hero(self, hero_char: Optional[Dict], daily: List[Dict]) -> str:
@@ -354,8 +513,11 @@ class BlogGenerator:
             )
         return html
 
-    def _section_ranking(self, ranking: List[Dict], year_month: str) -> str:
+    def _section_ranking(self, ranking: List[Dict], year_month: str,
+                         narrative: str = None) -> str:
         html = '<h2>今月のランキング</h2>\n'
+        if narrative:
+            html += f'<p style="color:#7a6b80;font-size:.95rem;">{narrative}</p>\n'
         total = len(ranking)
         first_balance = ranking[0]['current_balance'] if ranking else 0
 
@@ -528,6 +690,205 @@ class BlogGenerator:
                 f' ({worst[4]:+.1f}%) — {profile["name_jp"]}</div></div>\n'
             )
         return html
+
+    # ------------------------------------------------------------------
+    # AI生成: 朝記事
+    # ------------------------------------------------------------------
+
+    def _generate_morning_opening(self, today_entries: List[Dict],
+                                  ranking: List[Dict]) -> Dict:
+        """朝記事用オープニング（subtitle/lead/talk_lines）を1回のAIコールで生成する。"""
+        fallback = {
+            'subtitle': '今日の3人のエントリー',
+            'lead': '今日も3人の勝負が始まります。',
+            'talk_lines': [
+                {'name': 'rei',   'line': '流れを拾っていきます。'},
+                {'name': 'mirai', 'line': '今日もいけそうな気がする！'},
+                {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
+            ],
+        }
+
+        entries_summary = '\n'.join(
+            f'{ANALYST_PROFILES.get(e["analyst_name"], {}).get("name_jp", e["analyst_name"])}: '
+            f'{e.get("stock_name", "")}（{e.get("stock_code", "")}）{e.get("prediction_reason", "")}'
+            for e in today_entries
+        ) if today_entries else 'エントリーなし'
+
+        ranking_txt = ', '.join(
+            f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"], {}).get("name_short", r["analyst_name"])}'
+            f'（{r["current_balance"]:,}円）'
+            for i, r in enumerate(ranking)
+        ) if ranking else ''
+
+        profiles_desc = '\n'.join(
+            f'{p["name_jp"]}({p["name_short"]}): {p["personality"]}'
+            for p in ANALYST_PROFILES.values()
+        )
+
+        try:
+            messages = [
+                {'role': 'system', 'content': '投資シミュレーションブログの脚本家です。'},
+                {'role': 'user', 'content': (
+                    f'キャラクター設定：\n{profiles_desc}\n\n'
+                    f'今日のエントリー：\n{entries_summary}\n'
+                    f'現在の順位：{ranking_txt}\n\n'
+                    f'朝の作戦会議記事用のオープニングコンテンツを作ってください。\n'
+                    f'投資助言・断言表現は使わないでください。\n'
+                    f'以下のJSON形式で返してください（他の文字は不要）：\n'
+                    f'{{"subtitle":"玲は堅実、律は今日もノリ勝負（例）","lead":"リード文1〜2文",'
+                    f'"talk_lines":[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]}}'
+                )},
+            ]
+            raw = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='morning_opening', model='gemini',
+            )
+            if raw:
+                m = re.search(r'\{.*\}', raw, re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group())
+                    if isinstance(parsed, dict) and 'subtitle' in parsed:
+                        return parsed
+        except Exception:
+            pass
+        return fallback
+
+    def _generate_spotlight(self, today_entries: List[Dict], ranking: List[Dict]) -> str:
+        """今日の注目キャラについての短い紹介文を生成する。"""
+        fallback = '3人それぞれの勝負に注目です。'
+        if not today_entries:
+            return fallback
+
+        entries_summary = ', '.join(
+            f'{ANALYST_PROFILES.get(e["analyst_name"], {}).get("name_short", e["analyst_name"])}'
+            f'→{e.get("stock_name", "")}'
+            for e in today_entries
+        )
+        try:
+            messages = [
+                {'role': 'system', 'content': '投資シミュレーションブログの編集者です。'},
+                {'role': 'user', 'content': (
+                    f'今日のエントリー：{entries_summary}\n'
+                    f'今日特に注目すべきキャラとその理由を1〜2文で教えてください。'
+                    f'投資助言・断言表現は使わないでください。'
+                )},
+            ]
+            result = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='spotlight', model='gemini',
+            )
+            return result.strip() if result else fallback
+        except Exception:
+            return fallback
+
+    # ------------------------------------------------------------------
+    # AI生成: 夜記事
+    # ------------------------------------------------------------------
+
+    def _generate_result_opening(self, daily: List[Dict], ranking: List[Dict]) -> Dict:
+        """夜記事用オープニング（subtitle/lead）を1回のAIコールで生成する。"""
+        fallback = {
+            'subtitle': '今日の結果発表',
+            'lead': '今日の勝負結果をお伝えします。',
+        }
+        if not daily:
+            return fallback
+
+        summary = '\n'.join(
+            f'{ANALYST_PROFILES.get(d["analyst_name"], {}).get("name_jp", d["analyst_name"])}: '
+            f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円 '
+            f'({d["win_count"]}勝{d["lose_count"]}敗)'
+            for d in daily
+        )
+        ranking_txt = ', '.join(
+            f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"], {}).get("name_short", r["analyst_name"])}'
+            for i, r in enumerate(ranking)
+        ) if ranking else ''
+
+        try:
+            messages = [
+                {'role': 'system', 'content': '投資シミュレーションブログの脚本家です。'},
+                {'role': 'user', 'content': (
+                    f'今日の仮想投資結果：\n{summary}\n'
+                    f'順位：{ranking_txt}\n\n'
+                    f'夜の結果発表記事用のオープニングを作ってください。\n'
+                    f'subtitleはキャラクターのドラマが伝わるような短いフレーズ（例：律が大暴れ、みらいは反省会へ）にしてください。\n'
+                    f'投資助言・断言表現は使わないでください。\n'
+                    f'以下のJSON形式で返してください（他の文字は不要）：\n'
+                    f'{{"subtitle":"律が大暴れ、みらいは反省会へ（例）","lead":"リード文1〜2文"}}'
+                )},
+            ]
+            raw = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='result_opening', model='gemini',
+            )
+            if raw:
+                m = re.search(r'\{.*\}', raw, re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group())
+                    if isinstance(parsed, dict) and 'subtitle' in parsed:
+                        return parsed
+        except Exception:
+            pass
+        return fallback
+
+    def _generate_push_points(self, daily: List[Dict]) -> List[Dict]:
+        """各キャラの今日の推しポイントを1回のAIコールで生成する。"""
+        fallback = [
+            {'name': 'rei',   'point': '負けても分析ノートを閉じないところ'},
+            {'name': 'mirai', 'point': 'いつも前向きで諦めないところ'},
+            {'name': 'ritu',  'point': '勝っても負けても全力で楽しんでいるところ'},
+        ]
+        if not daily:
+            return fallback
+
+        summary = '\n'.join(
+            f'{ANALYST_PROFILES.get(d["analyst_name"], {}).get("name_jp", d["analyst_name"])}: '
+            f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円 '
+            f'({d["win_count"]}勝{d["lose_count"]}敗)'
+            for d in daily
+        )
+
+        try:
+            messages = [
+                {'role': 'system', 'content': '投資シミュレーションブログの脚本家です。'},
+                {'role': 'user', 'content': (
+                    f'今日の仮想投資結果：\n{summary}\n\n'
+                    f'今日のキャラクターそれぞれの「推しポイント」（かわいい・面白い瞬間）を1文ずつ書いてください。\n'
+                    f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
+                    f'[{{"name":"rei","point":"..."}},{{"name":"mirai","point":"..."}},{{"name":"ritu","point":"..."}}]'
+                )},
+            ]
+            raw = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='push_points', model='gemini',
+            )
+            if raw:
+                m = re.search(r'\[.*?\]', raw, re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group())
+                    if isinstance(parsed, list) and len(parsed) == 3:
+                        return parsed
+        except Exception:
+            pass
+        return fallback
+
+    def _generate_ranking_narrative(self, ranking: List[Dict]) -> str:
+        """ランキングセクション上のナレーション行を生成する。"""
+        if not ranking:
+            return ''
+        first = ANALYST_PROFILES.get(ranking[0]['analyst_name'], {}).get('name_short', '')
+        try:
+            messages = [
+                {'role': 'system', 'content': '投資シミュレーションブログの編集者です。'},
+                {'role': 'user', 'content': (
+                    f'現在1位は{first}。'
+                    f'ランキングセクションの冒頭に添える、短い1文のナレーションを書いてください。'
+                    f'投資助言・断言表現は避けてください。'
+                )},
+            ]
+            result = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='ranking_narrative', model='gemini',
+            )
+            return result.strip() if result else ''
+        except Exception:
+            return ''
 
     # ------------------------------------------------------------------
     # AI生成: ナレーション系
