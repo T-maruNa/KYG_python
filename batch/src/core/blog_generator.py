@@ -392,7 +392,7 @@ class BlogGenerator:
             return ''
         html = (
             '<section class="strategy-talk">\n'
-            '<h2>今日の作戦会議</h2>\n'
+            '<h2>☀️ 今日の作戦会議</h2>\n'
         )
         for line in talk_lines:
             name = line.get('name', '')
@@ -410,7 +410,7 @@ class BlogGenerator:
         """朝記事: 今朝の3人（順位・選択・関係性セリフ）"""
         if not talk_lines:
             return ''
-        html = '<section class="strategy-talk">\n<h2>今朝の3人</h2>\n'
+        html = '<section class="strategy-talk morning-three">\n<h2>💬 今朝の3人</h2>\n'
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')
@@ -444,7 +444,7 @@ class BlogGenerator:
             return ''
         html = (
             '<section class="push-points">\n'
-            '<h2>今日のハイライト</h2>\n'
+            '<h2>✨ 今日の名場面</h2>\n'
         )
         for item in push_points:
             name = item.get('name', '')
@@ -482,9 +482,9 @@ class BlogGenerator:
     def _section_result(self, result_date: str, daily: List[Dict],
                         entries: List[Dict], ranking_by_analyst: Dict = None) -> str:
         if not daily:
-            return f'<h2>{result_date} 今日の勝負結果</h2><p>データがありません。</p>'
+            return f'<h2>🏁 今日の勝負結果</h2><p>データがありません。</p>'
 
-        html = f'<h2>今日の勝負結果 <span style="font-size:.8em;font-weight:normal;">{result_date}</span></h2>\n'
+        html = f'<h2>🏁 今日の勝負結果 <span style="font-size:.8em;font-weight:normal;">{result_date}</span></h2>\n'
         for d in daily:
             name = d['analyst_name']
             profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'personality': '', 'role': ''})
@@ -522,7 +522,7 @@ class BlogGenerator:
 
     def _section_ranking(self, ranking: List[Dict], year_month: str,
                          narrative: str = None) -> str:
-        html = '<h2>今月のランキング</h2>\n'
+        html = '<h2>🏆 今月のランキング</h2>\n'
         if narrative:
             html += f'<p style="color:#7a6b80;font-size:.95rem;">{narrative}</p>\n'
         total = len(ranking)
@@ -563,38 +563,61 @@ class BlogGenerator:
         return html
 
     def _section_today_entry(self, trade_date: str, entries: List[Dict]) -> str:
+        _AVATAR_ICONS = {'rei': '👓', 'mirai': '🌸', 'ritu': '🎲'}
         if not entries:
             return (
-                f'<h2>今日選んだ銘柄 <span style="font-size:.8em;font-weight:normal;">{trade_date}</span></h2>'
+                f'<h2>📒 今日の作戦ノート <span style="font-size:.8em;font-weight:normal;">{trade_date}</span></h2>'
                 f'<p>エントリーなし</p>'
             )
 
-        html = f'<h2>今日選んだ銘柄 <span style="font-size:.8em;font-weight:normal;">{trade_date}</span></h2>\n'
+        html = f'<h2>📒 今日の作戦ノート <span style="font-size:.8em;font-weight:normal;">{trade_date}</span></h2>\n'
         for analyst_name, profile in ANALYST_PROFILES.items():
             ae = [e for e in entries if e.get('analyst_name') == analyst_name]
             if not ae:
                 continue
-            html += f'<h3>{profile["name_jp"]}</h3>\n'
-            html += '<table class="battle-table"><tr><th>銘柄コード</th><th>銘柄名</th><th>投資額</th><th>選んだ理由</th></tr>\n'
+            icon = _AVATAR_ICONS.get(analyst_name, '👤')
+            short = profile.get('name_short', analyst_name)
+            name_jp = profile['name_jp']
+            role = profile.get('role', '')
+            html += (
+                f'<section class="strategy-card character-{analyst_name}">\n'
+                f'  <div class="strategy-card-header">\n'
+                f'    <div class="character-avatar placeholder-{analyst_name}">\n'
+                f'      <span class="avatar-icon">{icon}</span>\n'
+                f'      <span class="avatar-name">{short}</span>\n'
+                f'    </div>\n'
+                f'    <div>\n'
+                f'      <h3 class="character-name">{name_jp}の作戦ノート</h3>\n'
+                f'      <p class="character-role">{role}</p>\n'
+                f'    </div>\n'
+                f'  </div>\n'
+                f'  <div class="entry-chip-list">\n'
+            )
             total = 0
+            reasons = []
             for e in ae:
                 approx_man = round(e.get('buy_amount', 0) / 10000)
                 total += e.get('buy_amount', 0)
+                code = e.get('stock_code', '')
+                name = e.get('stock_name', '')
                 html += (
-                    f'<tr><td>{e["stock_code"]}</td>'
-                    f'<td>{e["stock_name"]}</td>'
-                    f'<td>約{approx_man}万円</td>'
-                    f'<td>{e.get("prediction_reason", "")}</td></tr>\n'
+                    f'    <div class="entry-chip">'
+                    f'<span class="stock-code">{code}</span>'
+                    f'<strong>{name}</strong>'
+                    f'<span class="amount">約{approx_man}万円</span>'
+                    f'</div>\n'
                 )
-            html += f'</table>\n<p class="entry-total">合計　約{round(total / 10000)}万円</p>\n'
+                reasons.append(e.get('prediction_reason', ''))
+            html += f'  </div>\n'
+            reason_text = '／'.join(r for r in reasons if r)
+            if reason_text:
+                html += f'  <div class="strategy-reason">{reason_text}</div>\n'
 
             stock_names = [e['stock_name'] for e in ae]
             comment = self._entry_comment(analyst_name, profile['personality'], stock_names)
             html += (
-                f'<div class="character-inline">\n'
-                f'  {_avatar_html(analyst_name, "happy", "56px")}\n'
-                f'  <div class="character-balloon" style="flex:1;">{comment}</div>\n'
-                f'</div>\n'
+                f'  <div class="character-balloon">{comment}</div>\n'
+                f'</section>\n'
             )
         return html
 
@@ -603,7 +626,7 @@ class BlogGenerator:
             return ''
         html = (
             '<section class="girls-talk">\n'
-            '<h2>今日の反省会</h2>\n'
+            '<h2>🌙 今日の反省会</h2>\n'
         )
         for line in talk_lines:
             name = line.get('name', '')

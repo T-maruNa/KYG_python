@@ -113,83 +113,126 @@ DISCLAIMER = (
 )
 
 BATTLE_CSS = '''<style>
-.battle-article{max-width:860px;margin:0 auto;color:#3f3446;line-height:1.8;font-family:sans-serif;}
-.battle-hero{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border:1px solid #f0ddea;border-radius:28px;padding:28px 24px;margin-bottom:28px;box-shadow:0 10px 30px rgba(120,80,120,.08);}
-.battle-label,.section-label{display:inline-block;font-size:.82rem;letter-spacing:.08em;color:#9b6b88;background:rgba(255,255,255,.8);border-radius:999px;padding:4px 12px;margin-bottom:8px;border:1px solid #f0ddea;}
+/* ベース */
+.battle-article{max-width:860px;margin:0 auto;color:#3f3446;line-height:1.9;font-family:'Hiragino Kana Gothic Pro','Meiryo',sans-serif;}
+
+/* ノート紙風背景 */
+.battle-article{
+  background-image: repeating-linear-gradient(transparent, transparent 27px, #f0e8f0 28px);
+  background-size: 100% 28px;
+  padding: 0 8px;
+}
+
+/* ヒーローヘッダー */
+.battle-hero{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border:1px solid #f0ddea;border-radius:24px;padding:28px 24px;margin-bottom:28px;box-shadow:0 10px 30px rgba(120,80,120,.08);background-image:none;}
+.battle-label{display:inline-block;font-size:.82rem;letter-spacing:.08em;color:#9b6b88;background:rgba(255,255,255,.8);border-radius:999px;padding:4px 12px;margin-bottom:8px;border:1px solid #f0ddea;}
 .battle-lead{margin:.4em 0 0;color:#7a6b80;font-size:.95rem;}
 .battle-article h1{color:#4b3b57;margin:.2em 0;}
-.battle-article h2{color:#4b3b57;border-bottom:none;margin-top:2.2em;padding-left:.2em;}
-.battle-article h2::before{content:"✦ ";color:#e6a6c8;}
+
+/* 見出し */
+.battle-article h2{color:#4b3b57;border-bottom:none;margin-top:2.2em;padding-left:.2em;font-size:1.05rem;}
 .battle-article h3{color:#4b3b57;margin:.6em 0 .3em;}
 .sim-notice{font-size:.9em;color:#666;background:#f9f9f9;border-left:4px solid #e6a6c8;padding:.6em 1em;border-radius:0 8px 8px 0;margin-bottom:1.5em;}
 .preview-notice{font-size:.85em;color:#999;background:#fafafa;border:1px dashed #ddd;border-radius:8px;padding:.5em 1em;margin-bottom:1em;text-align:center;}
-.today-hero{border-radius:24px;padding:22px 20px;margin:18px 0;box-shadow:0 10px 28px rgba(80,60,90,.09);}
-.today-hero.character-rei{background:linear-gradient(135deg,#e8f2ff,#f1f7ff);}
-.today-hero.character-mirai{background:linear-gradient(135deg,#ffe8f2,#fff3f7);}
-.today-hero.character-ritu{background:linear-gradient(135deg,#fff8d0,#fffde8);}
-.today-hero h2{margin-top:.3em;}
-.today-hero h2::before{content:"⭐ ";}
-.character-card{border-radius:24px;padding:20px;margin:18px 0;box-shadow:0 10px 28px rgba(80,60,90,.08);border:1px solid rgba(255,255,255,.9);}
-.character-rei{background:#f1f7ff;}
-.character-mirai{background:#fff3f7;}
-.character-ritu{background:#fffde8;}
+
+/* ステッカー風セクションラベル */
+.section-label{display:inline-block;font-size:.78rem;letter-spacing:.06em;color:#9b6b88;background:rgba(255,255,255,.9);border-radius:999px;padding:3px 12px;margin-bottom:6px;border:1px solid #f0ddea;box-shadow:0 2px 6px rgba(120,80,120,.07);}
+
+/* キャラクターカード */
+.character-card{border-radius:20px;padding:20px;margin:18px 0;box-shadow:0 8px 24px rgba(80,60,90,.08);border:1px solid rgba(255,255,255,.9);background-image:none;}
+.character-rei{background:linear-gradient(135deg,#edf6ff,#f8fbff);border-left:6px solid #8fb8e8;}
+.character-mirai{background:linear-gradient(135deg,#fff1f6,#fff9fb);border-left:6px solid #f0a4c2;}
+.character-ritu{background:linear-gradient(135deg,#fff8d8,#f8f0ff);border-left:6px solid #f5c84c;}
 .character-header{display:flex;gap:14px;align-items:center;margin-bottom:12px;}
-.character-avatar{width:92px;height:92px;border-radius:50%;background:rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;overflow:hidden;border:3px solid rgba(255,255,255,.9);flex-shrink:0;}
-.character-avatar img{width:100%;height:100%;object-fit:cover;}
-.character-avatar-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.65rem;color:#999;text-align:center;padding:4px;}
-.character-role{margin:0;font-size:.88rem;color:#7a6b80;}
-.result-score{font-size:1.9rem;font-weight:800;margin:10px 0 2px;}
+
+/* アバタープレースホルダー */
+.character-avatar{width:72px;height:72px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+.placeholder-rei{background:linear-gradient(135deg,#d6eaff,#eaf3ff);border:3px solid #8fb8e8;}
+.placeholder-mirai{background:linear-gradient(135deg,#ffd6e8,#fff0f6);border:3px solid #f0a4c2;}
+.placeholder-ritu{background:linear-gradient(135deg,#fff0a0,#f8e8ff);border:3px solid #f5c84c;}
+.avatar-icon{font-size:1.6rem;line-height:1;}
+.avatar-name{font-size:.65rem;color:#7a6b80;margin-top:2px;}
+.character-name::before{margin-right:4px;}
+.character-rei .character-name::before{content:"👓";}
+.character-mirai .character-name::before{content:"🌸";}
+.character-ritu .character-name::before{content:"🎲";}
+.character-role{margin:0;font-size:.85rem;color:#7a6b80;}
+.result-score{font-size:1.8rem;font-weight:800;margin:10px 0 2px;}
 .result-score.plus{color:#d85f8b;}
 .result-score.minus{color:#5c7fc4;}
-.result-meta{margin:0 0 12px;color:#6f6372;font-size:.92rem;}
-.character-balloon{position:relative;background:rgba(255,255,255,.88);border-radius:18px;padding:14px 16px;margin-top:10px;font-size:.95rem;}
-.ranking-card{display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:12px 14px;margin:10px 0;box-shadow:0 6px 18px rgba(80,60,90,.06);}
-.rank-badge{width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;flex-shrink:0;}
+.result-meta{margin:0 0 12px;color:#6f6372;font-size:.9rem;}
+.character-balloon{position:relative;background:rgba(255,255,255,.88);border-radius:16px;padding:12px 16px;margin-top:10px;font-size:.93rem;}
+
+/* 今日の主役カード */
+.today-hero{border-radius:20px;padding:22px 20px;margin:18px 0;box-shadow:0 10px 28px rgba(80,60,90,.09);}
+.today-hero.character-rei{background:linear-gradient(135deg,#ddeeff,#edf6ff);}
+.today-hero.character-mirai{background:linear-gradient(135deg,#ffe4f0,#fff5f9);}
+.today-hero.character-ritu{background:linear-gradient(135deg,#fff3b0,#fff8e0);}
+
+/* 作戦カード */
+.strategy-card{border-radius:20px;padding:20px;margin:18px 0;box-shadow:0 8px 24px rgba(80,60,90,.08);background-image:none;}
+.strategy-card-header{display:flex;gap:14px;align-items:center;margin-bottom:14px;}
+.entry-chip-list{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;}
+.entry-chip{background:rgba(255,255,255,.85);border-radius:12px;padding:8px 12px;font-size:.88rem;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(80,60,90,.06);border:1px solid rgba(200,180,210,.3);}
+.stock-code{font-size:.75rem;color:#9b6b88;background:#f6eef6;border-radius:6px;padding:2px 6px;}
+.amount{font-size:.78rem;color:#7a6b80;}
+.strategy-reason{font-size:.88rem;color:#6a5a72;background:rgba(255,255,255,.6);border-radius:10px;padding:8px 12px;margin:10px 0;border-left:3px solid rgba(180,150,190,.4);}
+
+/* ランキング */
+.ranking-card{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:12px 14px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);background-image:none;}
+.rank-badge{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex-shrink:0;}
 .rank-badge-1{background:#ffe8a3;}
 .rank-badge-2{background:#e8e8e8;}
 .rank-badge-3{background:#f4d9c6;}
-.rank-badge-n{background:#f0eef4;font-size:.9rem;}
 .ranking-inline,.character-inline{display:flex;align-items:flex-start;gap:10px;margin:10px 0;}
-.ranking-inline .character-avatar,.character-inline .character-avatar{width:56px;height:56px;}
-.battle-table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:18px;background:#fff;box-shadow:0 8px 22px rgba(80,60,90,.06);margin:.8em 0;}
+.ranking-inline .character-avatar,.character-inline .character-avatar{width:52px;height:52px;}
+
+/* 作戦会議トーク */
+.strategy-talk{background:rgba(255,255,255,.7);border-radius:20px;padding:20px 22px;margin:24px 0;box-shadow:0 6px 20px rgba(80,60,90,.06);background-image:none;}
+.girls-talk{background:rgba(255,255,255,.7);border-radius:20px;padding:20px 22px;margin:24px 0;box-shadow:0 6px 20px rgba(80,60,90,.06);background-image:none;}
+.talk-line{border-radius:12px;padding:10px 14px;margin:6px 0;font-size:.93rem;}
+.talk-line.rei{background:#e4f0ff;border-left:4px solid #8fb8e8;}
+.talk-line.mirai{background:#ffe8f2;border-left:4px solid #f0a4c2;}
+.talk-line.ritu{background:#fff6cc;border-left:4px solid #f5c84c;}
+
+/* 今日の名場面 */
+.push-points{background:rgba(255,255,255,.7);border-radius:20px;padding:20px 22px;margin:24px 0;box-shadow:0 6px 20px rgba(80,60,90,.06);background-image:none;}
+.push-item{border-radius:12px;padding:10px 14px;margin:6px 0;font-size:.93rem;}
+.push-item.rei{background:#e4f0ff;border-left:4px solid #8fb8e8;}
+.push-item.mirai{background:#ffe8f2;border-left:4px solid #f0a4c2;}
+.push-item.ritu{background:#fff6cc;border-left:4px solid #f5c84c;}
+
+/* 今朝の3人 */
+.strategy-talk.morning-three{background:rgba(255,255,255,.7);}
+
+/* ランキング表 */
+.battle-table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:16px;background:#fff;box-shadow:0 6px 18px rgba(80,60,90,.06);margin:.8em 0;background-image:none;}
 .battle-table th{background:#f6e8f0;color:#5f4a62;padding:10px 12px;text-align:left;}
 .battle-table td{border:none;border-top:1px solid #f0e7ee;padding:10px 12px;}
-.entry-total{text-align:right;font-size:.88rem;color:#9b6b88;margin:.2em 0 .8em;}
-.girls-talk{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
-.girls-talk h2::before{content:"💬 ";font-style:normal;}
-.talk-line{border-radius:14px;padding:10px 14px;margin:8px 0;font-size:.95rem;}
-.talk-line.rei{background:#e8f2ff;border-left:4px solid #7aabdf;}
-.talk-line.mirai{background:#fff0f5;border-left:4px solid #f0a0c0;}
-.talk-line.ritu{background:#fffadb;border-left:4px solid #f5cc50;}
-.next-hook{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:18px;padding:16px 20px;margin:24px 0;font-size:.95rem;color:#4b3b57;border:1px solid #f0ddea;text-align:center;}
-.cumulative-card{background:#fff;border-radius:18px;padding:14px 18px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);display:flex;align-items:center;gap:10px;}
-.mvp-count{font-size:.85rem;color:#7a6b80;}
-.disclaimer-box{font-size:.86rem;color:#7a7280;background:#fafafa;border-radius:16px;padding:14px 16px;margin-top:32px;border:1px solid #eee;}
-/* 朝記事 */
-.strategy-talk{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
-.strategy-talk h2::before{content:"☀️ ";font-style:normal;}
-.spotlight-card{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:18px;padding:16px 20px;margin:16px 0;border:1px solid #f0ddea;}
-.spotlight-card h3::before{content:"👀 ";}
-.result-teaser{background:linear-gradient(135deg,#f3f8ff,#fff7fb);border-radius:18px;padding:16px 20px;margin:24px 0;text-align:center;border:1px solid #e0e8f5;font-size:.95rem;color:#4b3b57;}
-/* 夜記事 */
-.push-points{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
-.push-points h2::before{content:"💕 ";font-style:normal;}
-.push-item{border-radius:14px;padding:10px 14px;margin:8px 0;font-size:.95rem;}
-.push-item.rei{background:#e8f2ff;border-left:4px solid #7aabdf;}
-.push-item.mirai{background:#fff0f5;border-left:4px solid #f0a0c0;}
-.push-item.ritu{background:#fffadb;border-left:4px solid #f5cc50;}
-.morning-link{background:#f5f5f5;border-radius:14px;padding:12px 16px;margin:16px 0;font-size:.88rem;color:#666;text-align:center;}
+
+/* 導線・次回フック */
+.result-teaser{background:linear-gradient(135deg,#f3f8ff,#fff7fb);border-radius:16px;padding:16px 20px;margin:24px 0;text-align:center;border:1px solid #e0e8f5;font-size:.93rem;color:#4b3b57;background-image:none;}
+.next-hook{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:16px;padding:16px 20px;margin:24px 0;font-size:.93rem;color:#4b3b57;border:1px solid #f0ddea;text-align:center;background-image:none;}
+.morning-link{background:#f5f0fa;border-radius:12px;padding:10px 16px;margin:14px 0;font-size:.87rem;color:#7a6b80;text-align:center;background-image:none;}
+
+/* MVP記録 */
+.cumulative-card{background:#fff;border-radius:16px;padding:12px 16px;margin:8px 0;box-shadow:0 4px 12px rgba(80,60,90,.06);display:flex;align-items:center;gap:10px;background-image:none;}
+.mvp-count{font-size:.83rem;color:#7a6b80;}
+
+/* 免責 */
+.disclaimer-box{font-size:.85rem;color:#7a7280;background:#fafafa;border-radius:14px;padding:14px 16px;margin-top:32px;border:1px solid #eee;background-image:none;}
+
 /* プレビューナビ */
 .preview-nav{max-width:860px;margin:0 auto 32px;display:flex;gap:12px;justify-content:center;font-size:.9rem;}
 .preview-nav a{background:#f6e8f0;color:#5f4a62;border-radius:999px;padding:6px 18px;text-decoration:none;border:1px solid #f0ddea;}
 .preview-nav a:hover{background:#f0d0e4;}
 .article-divider{max-width:860px;margin:48px auto;border:none;border-top:2px dashed #f0ddea;}
+
 @media(max-width:640px){
-  .battle-hero{padding:20px 16px;border-radius:20px;}
-  .character-card,.today-hero,.girls-talk{padding:16px;}
-  .character-avatar{width:74px;height:74px;}
-  .result-score{font-size:1.5rem;}
-  .battle-table{display:block;overflow-x:auto;}
+  .battle-hero{padding:20px 16px;border-radius:16px;}
+  .character-card,.today-hero,.girls-talk,.strategy-card{padding:16px;}
+  .character-avatar{width:60px;height:60px;}
+  .result-score{font-size:1.4rem;}
 }
 </style>'''
 
@@ -231,14 +274,17 @@ def _ai_raw(system: str, user: str) -> str:
         return None
 
 # ---------------------------------------------------------------------------
-# アバターHTML（プレビューは常にプレースホルダー）
+# アバターHTML（プレビューはキャラ別プレースホルダー）
 # ---------------------------------------------------------------------------
-def _avatar_html(name: str, size: str = '92px') -> str:
+AVATAR_ICONS = {'rei': '👓', 'mirai': '🌸', 'ritu': '🎲'}
+
+def _avatar_html(name: str, size: str = '72px') -> str:
     profile = ANALYST_PROFILES[name]
+    icon = AVATAR_ICONS.get(name, '👤')
     return (
-        f'<div class="character-avatar" style="width:{size};height:{size};">'
-        f'<div class="character-avatar-placeholder">🖼️<br>{profile["name_jp"]}<br>'
-        f'<span style="font-size:.55rem;">※結果により変動</span></div>'
+        f'<div class="character-avatar placeholder-{name}" style="width:{size};height:{size};">'
+        f'<span class="avatar-icon">{icon}</span>'
+        f'<span class="avatar-name">{profile["name_short"]}</span>'
         f'</div>'
     )
 
@@ -454,7 +500,7 @@ def section_result() -> str:
     ranking_map = {r['analyst_name']: i + 1 for i, r in enumerate(SAMPLE_RANKING)}
     total = len(SAMPLE_RANKING)
 
-    html = f'<h2>今日の勝負結果 <span style="font-size:.8em;font-weight:normal;">{SAMPLE_DATE}</span></h2>\n'
+    html = f'<h2>🏁 今日の勝負結果 <span style="font-size:.8em;font-weight:normal;">{SAMPLE_DATE}</span></h2>\n'
     for d in SAMPLE_DAILY:
         name = d['analyst_name']
         profile = ANALYST_PROFILES[name]
@@ -495,7 +541,7 @@ def section_result() -> str:
     return html
 
 def section_ranking() -> str:
-    html = '<h2>今月のランキング</h2>\n'
+    html = '<h2>🏆 今月のランキング</h2>\n'
     total = len(SAMPLE_RANKING)
     first_balance = SAMPLE_RANKING[0]['current_balance']
 
@@ -540,24 +586,44 @@ def section_ranking() -> str:
     return html
 
 def section_today_entry() -> str:
-    html = f'<h2>今日選んだ銘柄 <span style="font-size:.8em;font-weight:normal;">{SAMPLE_TRADE_DATE}</span></h2>\n'
+    html = f'<h2>📒 今日の作戦ノート <span style="font-size:.8em;font-weight:normal;">{SAMPLE_TRADE_DATE}</span></h2>\n'
     for analyst_name, profile in ANALYST_PROFILES.items():
         ae = [e for e in SAMPLE_TODAY_ENTRIES if e['analyst_name'] == analyst_name]
         if not ae:
             continue
-        html += f'<h3>{profile["name_jp"]}</h3>\n'
-        html += '<table class="battle-table"><tr><th>銘柄コード</th><th>銘柄名</th><th>投資額</th><th>選んだ理由</th></tr>\n'
-        total = 0
+        icon = AVATAR_ICONS.get(analyst_name, '👤')
+        short = profile['name_short']
+        name_jp = profile['name_jp']
+        role = profile['role']
+        html += (
+            f'<section class="strategy-card character-{analyst_name}">\n'
+            f'  <div class="strategy-card-header">\n'
+            f'    <div class="character-avatar placeholder-{analyst_name}">\n'
+            f'      <span class="avatar-icon">{icon}</span>\n'
+            f'      <span class="avatar-name">{short}</span>\n'
+            f'    </div>\n'
+            f'    <div>\n'
+            f'      <h3 class="character-name">{name_jp}の作戦ノート</h3>\n'
+            f'      <p class="character-role">{role}</p>\n'
+            f'    </div>\n'
+            f'  </div>\n'
+            f'  <div class="entry-chip-list">\n'
+        )
+        reasons = []
         for e in ae:
             approx_man = round(e['buy_amount'] / 10000)
-            total += e['buy_amount']
             html += (
-                f'<tr><td>{e["stock_code"]}</td>'
-                f'<td>{e["stock_name"]}</td>'
-                f'<td>約{approx_man}万円</td>'
-                f'<td>{e["prediction_reason"]}</td></tr>\n'
+                f'    <div class="entry-chip">'
+                f'<span class="stock-code">{e["stock_code"]}</span>'
+                f'<strong>{e["stock_name"]}</strong>'
+                f'<span class="amount">約{approx_man}万円</span>'
+                f'</div>\n'
             )
-        html += f'</table>\n<p class="entry-total">合計　約{round(total / 10000)}万円</p>\n'
+            reasons.append(e.get('prediction_reason', ''))
+        html += '  </div>\n'
+        reason_text = '／'.join(r for r in reasons if r)
+        if reason_text:
+            html += f'  <div class="strategy-reason">{reason_text}</div>\n'
 
         stocks = [e['stock_name'] for e in ae]
         comment = _ai(
@@ -567,15 +633,13 @@ def section_today_entry() -> str:
             fallback=f'今日は{"、".join(stocks)}に注目しています。',
         )
         html += (
-            f'<div class="character-inline">\n'
-            f'  {_avatar_html(analyst_name, "56px")}\n'
-            f'  <div class="character-balloon" style="flex:1;">{comment}</div>\n'
-            f'</div>\n'
+            f'  <div class="character-balloon">{comment}</div>\n'
+            f'</section>\n'
         )
     return html
 
 def section_strategy_talk(talk_lines: list) -> str:
-    html = '<section class="strategy-talk">\n<h2>今日の作戦会議</h2>\n'
+    html = '<section class="strategy-talk">\n<h2>☀️ 今日の作戦会議</h2>\n'
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -585,7 +649,7 @@ def section_strategy_talk(talk_lines: list) -> str:
     return html
 
 def section_morning_three(talk_lines: list) -> str:
-    html = '<section class="strategy-talk">\n<h2>今朝の3人</h2>\n'
+    html = '<section class="strategy-talk morning-three">\n<h2>💬 今朝の3人</h2>\n'
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -608,7 +672,7 @@ def section_morning_link(url: str = None) -> str:
     return f'<div class="morning-link">📋 <a href="{url}">朝の作戦会議はこちら</a></div>\n'
 
 def section_girls_talk(talk_lines: list) -> str:
-    html = '<section class="girls-talk">\n<h2>今日の反省会</h2>\n'
+    html = '<section class="girls-talk">\n<h2>🌙 今日の反省会</h2>\n'
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -618,7 +682,7 @@ def section_girls_talk(talk_lines: list) -> str:
     return html
 
 def section_push_points(push_points: list) -> str:
-    html = '<section class="push-points">\n<h2>今日のハイライト</h2>\n'
+    html = '<section class="push-points">\n<h2>✨ 今日の名場面</h2>\n'
     for item in push_points:
         name = item.get('name', '')
         point = item.get('point', '')
