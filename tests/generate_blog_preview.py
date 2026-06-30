@@ -657,6 +657,7 @@ def generate_ranking_narrative() -> list:
             f'・順位だけで終わらせず、今日の結果に合わせたキャラの感情を1文で入れてください\n'
             f'・長くしすぎない（1文以内）\n'
             f'・キャラの口調に合わせてください\n'
+            f'・コメント本文の先頭にキャラ名（「律：」「玲：」など）を入れないでください（HTML側で表示します）\n'
             f'・投資助言・断言表現は禁止です\n'
             f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
             f'[{{"name":"rei","comment":"..."}},{{"name":"mirai","comment":"..."}},{{"name":"ritu","comment":"..."}}]'
@@ -686,7 +687,7 @@ def generate_ranking_narrative() -> list:
             mood = '静かに追走中' if profit >= 0 else '差を意識しながらも落ち着いている'
         else:
             mood = '悔しいが明日に気持ちを向けている'
-        fallback.append({'name': name, 'comment': f'{short}：{mood}。'})
+        fallback.append({'name': name, 'comment': f'{mood}。'})
     return fallback
 
 
@@ -900,7 +901,7 @@ def generate_morning_beginning(narrator: str = 'rei') -> str:
     """「☕ 今朝のはじまり」の本文をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
     fallback_by_narrator = {
         'rei': (
-            '昨日は律が大きく前に出て、玲は落ち着いて積み上げる展開でした。'
+            '昨日は律さんが大きく前に出て、私は落ち着いて積み上げる展開でした。'
             'みらいは少し悔しい朝かもしれませんが、今朝も3人それぞれの作戦が始まります。'
         ),
         'mirai': (
@@ -953,7 +954,7 @@ def generate_night_beginning(narrator: str = 'rei') -> str:
         'ritu': (
             '今日の勝負終わったよ〜！みんなどうだったんだろ？'
             '結果見る前からなんか空気でわかる気がするんだけどね笑。'
-            'とりあえず今日いちばんやらかした、もとい活躍した子から行くよ！'
+            'とりあえず今日いちばん目立ってた子から行くよ！'
         ),
     }
     fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])

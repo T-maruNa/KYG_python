@@ -1334,7 +1334,7 @@ class BlogGenerator:
                 mood = '静かに追走中' if profit >= 0 else '差を意識しながらも落ち着いている'
             else:
                 mood = '悔しいが明日に気持ちを向けている'
-            fallback.append({'name': name, 'comment': f'{short}：{mood}。'})
+            fallback.append({'name': name, 'comment': f'{mood}。'})
 
         ranking_summary = '\n'.join(
             f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"],{}).get("name_short","")}（'
@@ -1352,6 +1352,7 @@ class BlogGenerator:
                     f'・順位だけで終わらせず、今日の結果に合わせたキャラの感情を1文で入れてください\n'
                     f'・長くしすぎない（1文以内）\n'
                     f'・キャラの口調に合わせてください\n'
+                    f'・コメント本文の先頭にキャラ名（「律：」「玲：」など）を入れないでください（HTML側で表示します）\n'
                     f'・投資助言・断言表現は禁止です\n'
                     f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
                     f'[{{"name":"rei","comment":"..."}},{{"name":"mirai","comment":"..."}},{{"name":"ritu","comment":"..."}}]'
