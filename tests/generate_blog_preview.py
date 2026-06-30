@@ -22,7 +22,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'batch'))
 from src.core.prompt_loader import PromptLoader
 
 # blog_generator.py と同定義（インポートすると psycopg2 等が連鎖ロードされるため直接定義）
-_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu', 5: 'ritu', 6: 'random'}
+# 日曜（6）は前週1位キャラを使うため呼び出し側で解決する
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu', 5: 'ritu'}
 _NARRATOR_TONE = {
     'rei': (
         '鷲見 玲（rei）の口調で書いてください。'
@@ -44,15 +45,13 @@ _NARRATOR_TONE = {
     ),
 }
 
-def get_weekday_narrator(date_str: str) -> str:
-    import random as _random
+def get_weekday_narrator(date_str: str, sunday_narrator: str = 'rei') -> str:
     from datetime import date as _date
     try:
         d = _date.fromisoformat(date_str)
-        narrator = _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
-        if narrator == 'random':
-            return _random.choice(['rei', 'mirai', 'ritu'])
-        return narrator
+        if d.weekday() == 6:
+            return sunday_narrator
+        return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
     except Exception:
         return 'rei'
 
@@ -99,6 +98,9 @@ SAMPLE_CUMULATIVE_MVP = [
 ]
 
 SAMPLE_MORNING_POST_URL = 'https://example.com/2026/06/29/morning-strategy/'
+# 日曜記事のナレーター：本番では前週1位キャラをDBから取得するが、
+# プレビューはサンプルデータの1位キャラを手動で指定する
+SAMPLE_SUNDAY_NARRATOR = SAMPLE_RANKING[0]['analyst_name']  # 現在のサンプルでは ritu
 
 # ---------------------------------------------------------------------------
 # 画像URL設定（未設定 or 空文字の場合は非表示）
@@ -1019,7 +1021,7 @@ def section_night_beginning(text: str, narrator: str = 'rei') -> str:
 # HTML組み立て — 朝記事
 # ---------------------------------------------------------------------------
 def build_morning_html() -> str:
-    narrator = get_weekday_narrator(SAMPLE_TRADE_DATE)
+    narrator = get_weekday_narrator(SAMPLE_TRADE_DATE, sunday_narrator=SAMPLE_SUNDAY_NARRATOR)
     print(f'  [朝記事] 今朝のはじまり（ナレーター: {narrator}）...')
     morning_beginning = generate_morning_beginning(narrator)
 
@@ -1074,7 +1076,7 @@ def build_morning_html() -> str:
 # HTML組み立て — 夜記事
 # ---------------------------------------------------------------------------
 def build_evening_html() -> str:
-    narrator = get_weekday_narrator(SAMPLE_DATE)
+    narrator = get_weekday_narrator(SAMPLE_DATE, sunday_narrator=SAMPLE_SUNDAY_NARRATOR)
     print(f'  [夜記事] 夜のはじまり（ナレーター: {narrator}）...')
     night_beginning = generate_night_beginning(narrator)
 

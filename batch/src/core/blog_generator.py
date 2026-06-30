@@ -226,9 +226,9 @@ _ASSET_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 _RANK_BADGE_CLASS = {1: 'rank-badge-1', 2: 'rank-badge-2', 3: 'rank-badge-3'}
 _RANK_MEDAL = {1: '🥇', 2: '🥈', 3: '🥉'}
 
-# 曜日ごとのナレーター担当（0=月, 1=火, 2=水, 3=木, 4=金, 5=土, 6=日）
-# 土曜は律、日曜はランダム（週末も投稿がある場合の保険）
-_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu', 5: 'ritu', 6: 'random'}
+# 曜日ごとのナレーター担当（0=月, 1=火, 2=水, 3=木, 4=金, 5=土）
+# 日曜（6）は前週1位キャラを使うため呼び出し側で解決する
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu', 5: 'ritu'}
 
 # 曜日担当ナレーターごとの口調・役割ヒント（AI プロンプトに渡す）
 _NARRATOR_TONE = {
@@ -253,19 +253,18 @@ _NARRATOR_TONE = {
 }
 
 
-def get_weekday_narrator(date_str: str) -> str:
+def get_weekday_narrator(date_str: str, sunday_narrator: str = 'rei') -> str:
     """
     日付文字列（YYYY-MM-DD）から曜日担当ナレーターを返す。
-    日曜（weekday==6）は 'random' のためランダム選択する。
+    日曜（weekday==6）は前週1位キャラを使うため、呼び出し側で
+    sunday_narrator を解決して渡す（デフォルトは rei）。
     """
-    import random as _random
     from datetime import date as _date
     try:
         d = _date.fromisoformat(date_str)
-        narrator = _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
-        if narrator == 'random':
-            return _random.choice(['rei', 'mirai', 'ritu'])
-        return narrator
+        if d.weekday() == 6:
+            return sunday_narrator
+        return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
     except Exception:
         return 'rei'
 
@@ -348,8 +347,15 @@ class BlogGenerator:
         # 前営業日の結果を取得して朝の導入文に使う（なくても記事生成は続く）
         prev_daily = self.daily_manager.get_latest(before_date=trade_date)
 
-        # 曜日担当ナレーター（月=rei, 火=mirai, 水=rei, 木=mirai, 金=ritu）
-        narrator = get_weekday_narrator(trade_date)
+        # 曜日担当ナレーター。日曜は前週1位キャラをDBから取得して渡す
+        from datetime import date as _date
+        _sunday_narrator = 'rei'
+        try:
+            if _date.fromisoformat(trade_date).weekday() == 6:
+                _sunday_narrator = self.daily_manager.get_last_week_top(trade_date)
+        except Exception:
+            pass
+        narrator = get_weekday_narrator(trade_date, sunday_narrator=_sunday_narrator)
 
         opening = self._generate_morning_opening(today_entries, ranking)
         subtitle = opening.get('subtitle', '今日の3人のエントリー')
@@ -437,7 +443,15 @@ class BlogGenerator:
         lead = opening.get('lead', '今日の勝負結果をお伝えします。')
 
         # 夜記事も同じ曜日ナレーターを使う（result_date で判定）
-        narrator = get_weekday_narrator(result_date)
+        # 日曜は前週1位キャラをDBから取得してナレーターに設定
+        from datetime import date as _date
+        _sunday_narrator = 'rei'
+        try:
+            if _date.fromisoformat(result_date).weekday() == 6:
+                _sunday_narrator = self.daily_manager.get_last_week_top(result_date)
+        except Exception:
+            pass
+        narrator = get_weekday_narrator(result_date, sunday_narrator=_sunday_narrator)
 
         girls_talk_lines = self._generate_girls_talk(daily, ranking)
         push_points = self._generate_push_points(daily)
