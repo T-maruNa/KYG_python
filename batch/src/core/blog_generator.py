@@ -200,6 +200,50 @@ _ASSET_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 _RANK_BADGE_CLASS = {1: 'rank-badge-1', 2: 'rank-badge-2', 3: 'rank-badge-3'}
 _RANK_MEDAL = {1: '🥇', 2: '🥈', 3: '🥉'}
 
+# 曜日ごとのナレーター担当（0=月, 1=火, 2=水, 3=木, 4=金）
+# 律はナレーション少なめ（金曜のみ）→ キャラとして週末に強く出る方がおいしいため
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu'}
+
+# 曜日担当ナレーターごとの口調・役割ヒント（AI プロンプトに渡す）
+_NARRATOR_TONE = {
+    'rei': (
+        '鷲見 玲（rei）の口調で書いてください。'
+        '落ち着いた大人女子。敬語ベースだが固くなりすぎない。'
+        '冷静に週の流れや順位を整理しながら、読者を自然に記事へ引き込む語り口。'
+        'ドヤりは控えめに。'
+    ),
+    'mirai': (
+        '桜庭 みらい（mirai）の口調で書いてください。'
+        '明るくポジティブな新社会人。少しくだけた話し言葉でもOK。'
+        '負けていても前を向く、頑張り屋の語り口。'
+        '感情が少し出てよいが、泣かせすぎない。'
+    ),
+    'ritu': (
+        '一ノ瀬 律（ritu）の口調で書いてください。'
+        '金髪ギャル。敬語は使わない。軽くてノリが良い語り口。'
+        '週末前の解放感を少し出してよい。勝ったら喜ぶ、負けても「切り替えよ」くらいのテンション。'
+        'ただし勝負はちゃんと見ている。'
+    ),
+}
+
+
+def get_weekday_narrator(date_str: str) -> str:
+    """
+    日付文字列（YYYY-MM-DD）から曜日担当ナレーターを返す。
+    土日祝は朝記事を投稿しないが、万が一呼ばれた場合は rei をデフォルトとする。
+    """
+    from datetime import date as _date
+    try:
+        d = _date.fromisoformat(date_str)
+        return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
+    except Exception:
+        return 'rei'
+
+
+def _narrator_tone_hint(narrator: str) -> str:
+    """AI プロンプトに挿入する口調ヒント文字列を返す。"""
+    return _NARRATOR_TONE.get(narrator, _NARRATOR_TONE['rei'])
+
 
 def _image_url(analyst_name: str, expression: str) -> str:
     variant = os.path.join(_ASSET_BASE, analyst_name, f'{expression}.png')
@@ -274,6 +318,9 @@ class BlogGenerator:
         # 前営業日の結果を取得して朝の導入文に使う（なくても記事生成は続く）
         prev_daily = self.daily_manager.get_latest(before_date=trade_date)
 
+        # 曜日担当ナレーター（月=rei, 火=mirai, 水=rei, 木=mirai, 金=ritu）
+        narrator = get_weekday_narrator(trade_date)
+
         opening = self._generate_morning_opening(today_entries, ranking)
         subtitle = opening.get('subtitle', '今日の3人のエントリー')
         lead = opening.get('lead', '今日も3人の勝負が始まります。')
@@ -283,7 +330,7 @@ class BlogGenerator:
             {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
         ])
 
-        morning_beginning = self._generate_morning_beginning(prev_daily, ranking)
+        morning_beginning = self._generate_morning_beginning(prev_daily, ranking, narrator)
         morning_three = self._generate_morning_three(today_entries, ranking)
 
         # 画像生成（失敗しても記事生成は継続）
@@ -358,10 +405,13 @@ class BlogGenerator:
         drama_subtitle = opening.get('subtitle', '今日の結果発表')
         lead = opening.get('lead', '今日の勝負結果をお伝えします。')
 
+        # 夜記事も同じ曜日ナレーターを使う（result_date で判定）
+        narrator = get_weekday_narrator(result_date)
+
         girls_talk_lines = self._generate_girls_talk(daily, ranking)
         push_points = self._generate_push_points(daily)
-        next_hook = self._generate_next_hook(daily, ranking)
-        night_beginning = self._generate_night_beginning(daily, ranking, hero_char)
+        next_hook = self._generate_next_hook(daily, ranking, narrator)
+        night_beginning = self._generate_night_beginning(daily, ranking, hero_char, narrator)
 
         # 夜記事用 画像生成（失敗しても記事生成は継続）
         # hero_expression は損益率から算出（victory/happy/worried/defeated）し
@@ -964,15 +1014,28 @@ class BlogGenerator:
             pass
         return fallback
 
-    def _generate_morning_beginning(self, prev_daily: List[Dict], ranking: List[Dict]) -> str:
+    def _generate_morning_beginning(self, prev_daily: List[Dict], ranking: List[Dict],
+                                    narrator: str = 'rei') -> str:
         """
         朝記事「☕ 今朝のはじまり」の本文を生成する。
-        前営業日の結果と現在の順位をもとに、3人の朝の空気を2〜4文で描写する。
+        曜日担当ナレーター（narrator）の口調で書かれた地の文形式。
+        見た目はセリフ欄ではなく通常のナレーション本文として表示される。
         """
-        fallback = (
-            '今日も3人の朝が始まりました。'
-            'それぞれの作戦を胸に、今日の勝負に向けて準備が整っています。'
-        )
+        fallback_by_narrator = {
+            'rei': (
+                '昨日の流れを静かに振り返りながら、今朝は3人それぞれの作戦を確認するところから始めます。'
+                '数字だけが全てではありませんが、今日も丁寧に積み上げていきます。'
+            ),
+            'mirai': (
+                '昨日どうだったかはちょっと置いといて、今日もここから始めます！'
+                'それぞれの作戦、ちゃんと見ていきますよ。'
+            ),
+            'ritu': (
+                '今日も勝負の朝です。正直ちょっと週末のこと考えちゃうけど、それはそれ。'
+                'まずは3人の作戦を見ていきます！'
+            ),
+        }
+        fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
         if not prev_daily and not ranking:
             return fallback
 
@@ -989,6 +1052,7 @@ class BlogGenerator:
             for i, r in enumerate(ranking)
         ) if ranking else ''
 
+        tone = _narrator_tone_hint(narrator)
         try:
             messages = [
                 {'role': 'system', 'content': PromptLoader.base_system()
@@ -996,11 +1060,12 @@ class BlogGenerator:
                 {'role': 'user', 'content': (
                     f'{prev_summary}\n{ranking_txt}\n\n'
                     f'朝記事の「☕ 今朝のはじまり」セクション用の本文を書いてください。\n'
+                    f'【口調・語り手の指定】{tone}\n'
                     f'前日の流れと今の順位をふまえて、3人の今朝の空気を2〜4文で描写してください。\n'
                     f'・投資分析ではなく、キャラクターの雰囲気・感情の描写にしてください\n'
                     f'・「昨日〜から、今朝は〜」という流れで自然につなげてください\n'
                     f'・文末は「今日の作戦会議へ」という流れで締めてください\n'
-                    f'・地の文として書いてください（セリフ形式や箇条書きは不要）\n'
+                    f'・地の文として書いてください（「玲：」「みらい：」などのセリフ形式は禁止）\n'
                     f'・2〜4文で完結させてください'
                 )},
             ]
@@ -1063,16 +1128,28 @@ class BlogGenerator:
             pass
         return fallback
 
-    def _generate_night_beginning(self, daily: List[Dict],
-                                  ranking: List[Dict], hero_char: Optional[Dict]) -> str:
+    def _generate_night_beginning(self, daily: List[Dict], ranking: List[Dict],
+                                  hero_char: Optional[Dict], narrator: str = 'rei') -> str:
         """
         夜記事「🌙 夜のはじまり」の本文を生成する。
-        今日の結果と主役情報をもとに、勝負が終わった夜の空気を2〜4文で描写する。
+        曜日担当ナレーター（narrator）の口調で書かれた地の文形式。
+        結果の数字より先に感情と場の空気を見せるための導入。
         """
-        fallback = (
-            '今日の勝負が終わりました。'
-            '3人それぞれが今日の結果を持ち寄って、これから発表です。'
-        )
+        fallback_by_narrator = {
+            'rei': (
+                '今日の勝負が終わりました。'
+                '3人はそれぞれの結果を静かに持ち寄っています。まずは今日の主役から見ていきます。'
+            ),
+            'mirai': (
+                '今日も終わりました！勝った子も負けた子も、まずは結果を見てみましょう。'
+                'まずは今日いちばん空気を動かした主役から！'
+            ),
+            'ritu': (
+                '今日の勝負、終わりました。大きく笑う子もいれば、ちょっとしょんぼりな子もいます。'
+                'まずは今日の主役から行きますよ！'
+            ),
+        }
+        fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
         if not daily:
             return fallback
 
@@ -1087,6 +1164,7 @@ class BlogGenerator:
             hero_name = ANALYST_PROFILES.get(hero_char['analyst_name'], {}).get('name_short', hero_char['analyst_name'])
             hero_txt = f'今日の主役候補: {hero_name}（{hero_char["total_profit_loss"]:+,}円）'
 
+        tone = _narrator_tone_hint(narrator)
         try:
             messages = [
                 {'role': 'system', 'content': PromptLoader.base_system()
@@ -1094,11 +1172,12 @@ class BlogGenerator:
                 {'role': 'user', 'content': (
                     f'今日の仮想投資結果：\n{summary}\n{hero_txt}\n\n'
                     f'夜記事の「🌙 夜のはじまり」セクション用の本文を書いてください。\n'
+                    f'【口調・語り手の指定】{tone}\n'
                     f'・今日の勝負が終わった直後の3人の空気を2〜4文で描写してください\n'
                     f'・勝ったキャラの表情・負けたキャラの表情を自然に入れてください\n'
                     f'・結果の数字はまだ出さず、感情と場の空気を先に見せてください\n'
                     f'・文末は「まずは今日の主役から」という流れで締めてください\n'
-                    f'・地の文として書いてください（セリフ形式や箇条書きは不要）\n'
+                    f'・地の文として書いてください（「玲：」「みらい：」などのセリフ形式は禁止）\n'
                     f'・2〜4文で完結させてください'
                 )},
             ]
@@ -1270,19 +1349,35 @@ class BlogGenerator:
             pass
         return fallback
 
-    def _generate_next_hook(self, daily: List[Dict], ranking: List[Dict]) -> str:
-        """明日へのひとことを生成する"""
+    def _generate_next_hook(self, daily: List[Dict], ranking: List[Dict],
+                            narrator: str = 'rei') -> str:
+        """
+        「次回へのひとこと」を曜日担当ナレーターの口調で生成する。
+        地の文形式（セリフ欄ではない）。
+        """
+        fallback_by_narrator = {
+            'rei': '明日も3人の勝負を、静かに見守っていただけると嬉しいです。',
+            'mirai': '明日も3人の勝負、一緒に見守っていてください！',
+            'ritu': '明日も見に来てね！週末前ラストのひと勝負、気になるじゃん？',
+        }
+        fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
         if not ranking:
-            return '明日も3人の勝負を、ゆるく見守ってください。'
+            return fallback
         first = ANALYST_PROFILES.get(ranking[0]['analyst_name'], {}).get('name_short', '')
         last = ANALYST_PROFILES.get(ranking[-1]['analyst_name'], {}).get('name_short', '') if len(ranking) > 1 else ''
+        tone = _narrator_tone_hint(narrator)
         try:
             messages = [
-                {'role': 'system', 'content': PromptLoader.base_system('投資シミュレーションブログの編集者')},
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}'},
                 {'role': 'user', 'content': (
-                    f'現在の順位: {", ".join(ANALYST_PROFILES.get(r["analyst_name"],{}).get("name_short","") for r in ranking)}の順。\n'
-                    f'読者が明日も見に来たくなるような、1文の締めの文章を書いてください。\n'
-                    f'キャラ名を入れて、連載感を出してください。'
+                    f'現在の順位: {", ".join(ANALYST_PROFILES.get(r["analyst_name"],{}).get("name_short","") for r in ranking)}の順。\n\n'
+                    f'「次回へのひとこと」を書いてください。\n'
+                    f'【口調・語り手の指定】{tone}\n'
+                    f'・読者が明日も見に来たくなるような1〜2文の締めの文章にしてください\n'
+                    f'・キャラ名を自然に入れて、連載感を出してください\n'
+                    f'・地の文として書いてください（「玲：」などのセリフ形式は禁止）\n'
+                    f'・投資助言や「必ず上がる」などの表現は禁止です'
                 )},
             ]
             result = self.guard.execute(
@@ -1290,7 +1385,7 @@ class BlogGenerator:
             )
             return result.strip() if result else f'明日は{last}が巻き返すのか、{first}がこのまま走るのか。次回もゆるく見守ってください。'
         except Exception:
-            return f'明日も3人の勝負を、ゆるく見守ってください。'
+            return fallback
 
     # ------------------------------------------------------------------
     # AI生成: キャラクターコメント系
