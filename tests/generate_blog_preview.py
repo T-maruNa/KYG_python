@@ -21,6 +21,40 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'batch'))
 
 from src.core.prompt_loader import PromptLoader
 
+# blog_generator.py と同定義（インポートすると psycopg2 等が連鎖ロードされるため直接定義）
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu'}
+_NARRATOR_TONE = {
+    'rei': (
+        '鷲見 玲（rei）の口調で書いてください。'
+        '落ち着いた大人女子。敬語ベースだが固くなりすぎない。'
+        '冷静に週の流れや順位を整理しながら、読者を自然に記事へ引き込む語り口。'
+        'ドヤりは控えめに。'
+    ),
+    'mirai': (
+        '桜庭 みらい（mirai）の口調で書いてください。'
+        '明るくポジティブな新社会人。少しくだけた話し言葉でもOK。'
+        '負けていても前を向く、頑張り屋の語り口。'
+        '感情が少し出てよいが、泣かせすぎない。'
+    ),
+    'ritu': (
+        '一ノ瀬 律（ritu）の口調で書いてください。'
+        '金髪ギャル。敬語は使わない。軽くてノリが良い語り口。'
+        '週末前の解放感を少し出してよい。勝ったら喜ぶ、負けても「切り替えよ」くらいのテンション。'
+        'ただし勝負はちゃんと見ている。'
+    ),
+}
+
+def get_weekday_narrator(date_str: str) -> str:
+    from datetime import date as _date
+    try:
+        d = _date.fromisoformat(date_str)
+        return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
+    except Exception:
+        return 'rei'
+
+def _narrator_tone_hint(narrator: str) -> str:
+    return _NARRATOR_TONE.get(narrator, _NARRATOR_TONE['rei'])
+
 # ---------------------------------------------------------------------------
 # サンプルデータ
 # ---------------------------------------------------------------------------
@@ -61,6 +95,34 @@ SAMPLE_CUMULATIVE_MVP = [
 ]
 
 SAMPLE_MORNING_POST_URL = 'https://example.com/2026/06/29/morning-strategy/'
+
+# ---------------------------------------------------------------------------
+# 画像URL設定（未設定 or 空文字の場合は非表示）
+# ---------------------------------------------------------------------------
+SCENE_IMAGES = {
+    'morning_scene': os.getenv('IMG_MORNING_SCENE', ''),   # 朝の作戦会議 3人集合画像
+    'evening_scene': os.getenv('IMG_EVENING_SCENE', ''),   # 夜の反省会 3人集合画像
+    'rei':   os.getenv('IMG_REI', ''),                      # 玲のキャラ画像
+    'mirai': os.getenv('IMG_MIRAI', ''),                    # みらいのキャラ画像
+    'ritu':  os.getenv('IMG_RITU', ''),                     # 律のキャラ画像
+}
+
+def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image',
+                      image_type: str = '') -> str:
+    if url:
+        return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
+    label = {
+        'morning_scene':          '☀️ 朝の作戦会議 3人集合画像（自動生成）',
+        'morning_sub_scene':      '💬 今朝の3人 サブ画像（自動生成）',
+        'hero_scene':             '⭐ 今日の主役キャラ画像（自動生成）',
+        'night_reflection_scene': '🌙 今日の反省会 3人集合画像（自動生成）',
+        'highlight_scene':        '✨ 今日の名場面 挿絵（自動生成）',
+    }.get(image_type, f'🖼️ {alt}（自動生成）')
+    return (
+        f'<div class="{css_class} scene-image-placeholder">'
+        f'<span class="scene-placeholder-label">{label}</span>'
+        f'</div>\n'
+    )
 
 # ---------------------------------------------------------------------------
 # キャラクター定義（blog_generator.py と同じ）
@@ -113,83 +175,142 @@ DISCLAIMER = (
 )
 
 BATTLE_CSS = '''<style>
-.battle-article{max-width:860px;margin:0 auto;color:#3f3446;line-height:1.8;font-family:sans-serif;}
-.battle-hero{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border:1px solid #f0ddea;border-radius:28px;padding:28px 24px;margin-bottom:28px;box-shadow:0 10px 30px rgba(120,80,120,.08);}
-.battle-label,.section-label{display:inline-block;font-size:.82rem;letter-spacing:.08em;color:#9b6b88;background:rgba(255,255,255,.8);border-radius:999px;padding:4px 12px;margin-bottom:8px;border:1px solid #f0ddea;}
+/* ベース */
+.battle-article{max-width:860px;margin:0 auto;color:#3f3446;line-height:1.9;font-family:'Hiragino Kana Gothic Pro','Meiryo',sans-serif;}
+
+/* ノート紙風背景 */
+.battle-article{
+  background-image: repeating-linear-gradient(transparent, transparent 27px, #f0e8f0 28px);
+  background-size: 100% 28px;
+  padding: 0 8px;
+}
+
+/* ヒーローヘッダー */
+.battle-hero{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border:1px solid #f0ddea;border-radius:24px;padding:28px 24px;margin-bottom:28px;box-shadow:0 10px 30px rgba(120,80,120,.08);background-image:none;}
+.battle-label{display:inline-block;font-size:.82rem;letter-spacing:.08em;color:#9b6b88;background:rgba(255,255,255,.8);border-radius:999px;padding:4px 12px;margin-bottom:8px;border:1px solid #f0ddea;}
 .battle-lead{margin:.4em 0 0;color:#7a6b80;font-size:.95rem;}
 .battle-article h1{color:#4b3b57;margin:.2em 0;}
-.battle-article h2{color:#4b3b57;border-bottom:none;margin-top:2.2em;padding-left:.2em;}
-.battle-article h2::before{content:"✦ ";color:#e6a6c8;}
+
+/* 見出し */
+.battle-article h2{color:#4b3b57;border-bottom:none;margin-top:2.2em;padding-left:.2em;font-size:1.05rem;}
 .battle-article h3{color:#4b3b57;margin:.6em 0 .3em;}
 .sim-notice{font-size:.9em;color:#666;background:#f9f9f9;border-left:4px solid #e6a6c8;padding:.6em 1em;border-radius:0 8px 8px 0;margin-bottom:1.5em;}
 .preview-notice{font-size:.85em;color:#999;background:#fafafa;border:1px dashed #ddd;border-radius:8px;padding:.5em 1em;margin-bottom:1em;text-align:center;}
-.today-hero{border-radius:24px;padding:22px 20px;margin:18px 0;box-shadow:0 10px 28px rgba(80,60,90,.09);}
-.today-hero.character-rei{background:linear-gradient(135deg,#e8f2ff,#f1f7ff);}
-.today-hero.character-mirai{background:linear-gradient(135deg,#ffe8f2,#fff3f7);}
-.today-hero.character-ritu{background:linear-gradient(135deg,#fff8d0,#fffde8);}
-.today-hero h2{margin-top:.3em;}
-.today-hero h2::before{content:"⭐ ";}
-.character-card{border-radius:24px;padding:20px;margin:18px 0;box-shadow:0 10px 28px rgba(80,60,90,.08);border:1px solid rgba(255,255,255,.9);}
-.character-rei{background:#f1f7ff;}
-.character-mirai{background:#fff3f7;}
-.character-ritu{background:#fffde8;}
+
+/* ステッカー風セクションラベル */
+.section-label{display:inline-block;font-size:.78rem;letter-spacing:.06em;color:#9b6b88;background:rgba(255,255,255,.9);border-radius:999px;padding:3px 12px;margin-bottom:6px;border:1px solid #f0ddea;box-shadow:0 2px 6px rgba(120,80,120,.07);}
+
+/* キャラクターカード */
+.character-card{border-radius:20px;padding:20px;margin:18px 0;box-shadow:0 8px 24px rgba(80,60,90,.08);border:1px solid rgba(255,255,255,.9);background-image:none;}
+.character-rei{background:linear-gradient(135deg,#edf6ff,#f8fbff);border-left:6px solid #8fb8e8;}
+.character-mirai{background:linear-gradient(135deg,#fff1f6,#fff9fb);border-left:6px solid #f0a4c2;}
+.character-ritu{background:linear-gradient(135deg,#fff8d8,#f8f0ff);border-left:6px solid #f5c84c;}
 .character-header{display:flex;gap:14px;align-items:center;margin-bottom:12px;}
-.character-avatar{width:92px;height:92px;border-radius:50%;background:rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;overflow:hidden;border:3px solid rgba(255,255,255,.9);flex-shrink:0;}
-.character-avatar img{width:100%;height:100%;object-fit:cover;}
-.character-avatar-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.65rem;color:#999;text-align:center;padding:4px;}
-.character-role{margin:0;font-size:.88rem;color:#7a6b80;}
-.result-score{font-size:1.9rem;font-weight:800;margin:10px 0 2px;}
+
+/* アバタープレースホルダー */
+.character-avatar{width:72px;height:72px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+.placeholder-rei{background:linear-gradient(135deg,#d6eaff,#eaf3ff);border:3px solid #8fb8e8;}
+.placeholder-mirai{background:linear-gradient(135deg,#ffd6e8,#fff0f6);border:3px solid #f0a4c2;}
+.placeholder-ritu{background:linear-gradient(135deg,#fff0a0,#f8e8ff);border:3px solid #f5c84c;}
+.avatar-icon{font-size:1.6rem;line-height:1;}
+.avatar-name{font-size:.65rem;color:#7a6b80;margin-top:2px;}
+.character-name::before{margin-right:4px;}
+.character-rei .character-name::before{content:"👓";}
+.character-mirai .character-name::before{content:"🌸";}
+.character-ritu .character-name::before{content:"🎲";}
+.character-role{margin:0;font-size:.85rem;color:#7a6b80;}
+.result-score{font-size:1.8rem;font-weight:800;margin:10px 0 2px;}
 .result-score.plus{color:#d85f8b;}
 .result-score.minus{color:#5c7fc4;}
-.result-meta{margin:0 0 12px;color:#6f6372;font-size:.92rem;}
-.character-balloon{position:relative;background:rgba(255,255,255,.88);border-radius:18px;padding:14px 16px;margin-top:10px;font-size:.95rem;}
-.ranking-card{display:flex;align-items:center;gap:12px;background:#fff;border-radius:18px;padding:12px 14px;margin:10px 0;box-shadow:0 6px 18px rgba(80,60,90,.06);}
-.rank-badge{width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;flex-shrink:0;}
+.result-meta{margin:0 0 12px;color:#6f6372;font-size:.9rem;}
+.character-balloon{position:relative;background:rgba(255,255,255,.88);border-radius:16px;padding:12px 16px;margin-top:10px;font-size:.93rem;}
+
+/* 今日の主役カード */
+.today-hero{border-radius:20px;padding:22px 20px;margin:18px 0;box-shadow:0 10px 28px rgba(80,60,90,.09);}
+.today-hero.character-rei{background:linear-gradient(135deg,#ddeeff,#edf6ff);}
+.today-hero.character-mirai{background:linear-gradient(135deg,#ffe4f0,#fff5f9);}
+.today-hero.character-ritu{background:linear-gradient(135deg,#fff3b0,#fff8e0);}
+
+/* 作戦カード */
+.strategy-card{border-radius:20px;padding:20px;margin:18px 0;box-shadow:0 8px 24px rgba(80,60,90,.08);background-image:none;}
+.strategy-card-header{display:flex;gap:14px;align-items:center;margin-bottom:14px;}
+.entry-chip-list{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;}
+.entry-chip{background:rgba(255,255,255,.85);border-radius:12px;padding:8px 12px;font-size:.88rem;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(80,60,90,.06);border:1px solid rgba(200,180,210,.3);}
+.stock-code{font-size:.75rem;color:#9b6b88;background:#f6eef6;border-radius:6px;padding:2px 6px;}
+.amount{font-size:.78rem;color:#7a6b80;}
+.strategy-reason{font-size:.88rem;color:#6a5a72;background:rgba(255,255,255,.6);border-radius:10px;padding:8px 12px;margin:10px 0;border-left:3px solid rgba(180,150,190,.4);}
+.strategy-total{display:inline-block;margin:4px 0 8px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.82);color:#7a6b80;font-size:.82rem;border:1px solid rgba(200,180,210,.35);box-shadow:0 2px 8px rgba(80,60,90,.04);}
+.strategy-total strong{color:#4b3b57;}
+/* シーン画像 */
+.scene-image{margin:14px 0;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(80,60,90,.10);}
+.scene-image img{width:100%;height:auto;display:block;}
+.scene-image-main{margin:16px 0 20px;}
+.scene-image-sub{margin:10px 0 16px;}
+.hero-image{margin:12px 0 16px;max-width:420px;}
+.hero-image img{border-radius:16px;}
+.scene-image-placeholder{display:flex;align-items:center;justify-content:center;min-height:80px;background:repeating-linear-gradient(45deg,#f8f4fc,#f8f4fc 8px,#f2edf8 8px,#f2edf8 16px);border:2px dashed #d8c8e8;border-radius:16px;box-shadow:none;}
+.scene-placeholder-label{font-size:.82rem;color:#a088b0;letter-spacing:.04em;}
+
+/* ランキング */
+.ranking-card{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:12px 14px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);background-image:none;}
+.rank-badge{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex-shrink:0;}
 .rank-badge-1{background:#ffe8a3;}
 .rank-badge-2{background:#e8e8e8;}
 .rank-badge-3{background:#f4d9c6;}
-.rank-badge-n{background:#f0eef4;font-size:.9rem;}
 .ranking-inline,.character-inline{display:flex;align-items:flex-start;gap:10px;margin:10px 0;}
-.ranking-inline .character-avatar,.character-inline .character-avatar{width:56px;height:56px;}
-.battle-table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:18px;background:#fff;box-shadow:0 8px 22px rgba(80,60,90,.06);margin:.8em 0;}
+.ranking-inline .character-avatar,.character-inline .character-avatar{width:52px;height:52px;}
+
+/* 作戦会議トーク */
+.strategy-talk{background:rgba(255,255,255,.7);border-radius:20px;padding:20px 22px;margin:24px 0;box-shadow:0 6px 20px rgba(80,60,90,.06);background-image:none;}
+.girls-talk{background:rgba(255,255,255,.7);border-radius:20px;padding:20px 22px;margin:24px 0;box-shadow:0 6px 20px rgba(80,60,90,.06);background-image:none;}
+.talk-line{border-radius:12px;padding:10px 14px;margin:6px 0;font-size:.93rem;}
+.talk-line.rei{background:#e4f0ff;border-left:4px solid #8fb8e8;}
+.talk-line.mirai{background:#ffe8f2;border-left:4px solid #f0a4c2;}
+.talk-line.ritu{background:#fff6cc;border-left:4px solid #f5c84c;}
+
+/* 今日の名場面 */
+.push-points{background:rgba(255,255,255,.7);border-radius:20px;padding:20px 22px;margin:24px 0;box-shadow:0 6px 20px rgba(80,60,90,.06);background-image:none;}
+.push-item{border-radius:12px;padding:10px 14px;margin:6px 0;font-size:.93rem;}
+.push-item.rei{background:#e4f0ff;border-left:4px solid #8fb8e8;}
+.push-item.mirai{background:#ffe8f2;border-left:4px solid #f0a4c2;}
+.push-item.ritu{background:#fff6cc;border-left:4px solid #f5c84c;}
+
+/* 今朝の3人 */
+.strategy-talk.morning-three{background:rgba(255,255,255,.7);}
+
+/* ランキング表 */
+.battle-table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:16px;background:#fff;box-shadow:0 6px 18px rgba(80,60,90,.06);margin:.8em 0;background-image:none;}
 .battle-table th{background:#f6e8f0;color:#5f4a62;padding:10px 12px;text-align:left;}
 .battle-table td{border:none;border-top:1px solid #f0e7ee;padding:10px 12px;}
-.entry-total{text-align:right;font-size:.88rem;color:#9b6b88;margin:.2em 0 .8em;}
-.girls-talk{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
-.girls-talk h2::before{content:"💬 ";font-style:normal;}
-.talk-line{border-radius:14px;padding:10px 14px;margin:8px 0;font-size:.95rem;}
-.talk-line.rei{background:#e8f2ff;border-left:4px solid #7aabdf;}
-.talk-line.mirai{background:#fff0f5;border-left:4px solid #f0a0c0;}
-.talk-line.ritu{background:#fffadb;border-left:4px solid #f5cc50;}
-.next-hook{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:18px;padding:16px 20px;margin:24px 0;font-size:.95rem;color:#4b3b57;border:1px solid #f0ddea;text-align:center;}
-.cumulative-card{background:#fff;border-radius:18px;padding:14px 18px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);display:flex;align-items:center;gap:10px;}
-.mvp-count{font-size:.85rem;color:#7a6b80;}
-.disclaimer-box{font-size:.86rem;color:#7a7280;background:#fafafa;border-radius:16px;padding:14px 16px;margin-top:32px;border:1px solid #eee;}
-/* 朝記事 */
-.strategy-talk{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
-.strategy-talk h2::before{content:"☀️ ";font-style:normal;}
-.spotlight-card{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:18px;padding:16px 20px;margin:16px 0;border:1px solid #f0ddea;}
-.spotlight-card h3::before{content:"👀 ";}
-.result-teaser{background:linear-gradient(135deg,#f3f8ff,#fff7fb);border-radius:18px;padding:16px 20px;margin:24px 0;text-align:center;border:1px solid #e0e8f5;font-size:.95rem;color:#4b3b57;}
-/* 夜記事 */
-.push-points{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
-.push-points h2::before{content:"💕 ";font-style:normal;}
-.push-item{border-radius:14px;padding:10px 14px;margin:8px 0;font-size:.95rem;}
-.push-item.rei{background:#e8f2ff;border-left:4px solid #7aabdf;}
-.push-item.mirai{background:#fff0f5;border-left:4px solid #f0a0c0;}
-.push-item.ritu{background:#fffadb;border-left:4px solid #f5cc50;}
-.morning-link{background:#f5f5f5;border-radius:14px;padding:12px 16px;margin:16px 0;font-size:.88rem;color:#666;text-align:center;}
+
+/* 導線・次回フック */
+.result-teaser{background:linear-gradient(135deg,#f3f8ff,#fff7fb);border-radius:16px;padding:16px 20px;margin:24px 0;text-align:center;border:1px solid #e0e8f5;font-size:.93rem;color:#4b3b57;background-image:none;}
+.next-hook{background:linear-gradient(135deg,#fff7fb,#f3f8ff);border-radius:16px;padding:16px 20px;margin:24px 0;font-size:.93rem;color:#4b3b57;border:1px solid #f0ddea;text-align:center;background-image:none;}
+.morning-link{background:#f5f0fa;border-radius:12px;padding:10px 16px;margin:14px 0;font-size:.87rem;color:#7a6b80;text-align:center;background-image:none;}
+
+/* MVP記録 */
+.cumulative-card{background:#fff;border-radius:16px;padding:12px 16px;margin:8px 0;box-shadow:0 4px 12px rgba(80,60,90,.06);display:flex;align-items:center;gap:10px;background-image:none;}
+.mvp-count{font-size:.83rem;color:#7a6b80;}
+
+/* 朝/夜のはじまり */
+.day-beginning{border-radius:22px;padding:20px 22px;margin:20px 0;box-shadow:0 6px 18px rgba(80,60,90,.07);background-image:none;}
+.morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
+.night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
+.beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
+/* 免責 */
+.disclaimer-box{font-size:.85rem;color:#7a7280;background:#fafafa;border-radius:14px;padding:14px 16px;margin-top:32px;border:1px solid #eee;background-image:none;}
+
 /* プレビューナビ */
 .preview-nav{max-width:860px;margin:0 auto 32px;display:flex;gap:12px;justify-content:center;font-size:.9rem;}
 .preview-nav a{background:#f6e8f0;color:#5f4a62;border-radius:999px;padding:6px 18px;text-decoration:none;border:1px solid #f0ddea;}
 .preview-nav a:hover{background:#f0d0e4;}
 .article-divider{max-width:860px;margin:48px auto;border:none;border-top:2px dashed #f0ddea;}
+
 @media(max-width:640px){
-  .battle-hero{padding:20px 16px;border-radius:20px;}
-  .character-card,.today-hero,.girls-talk{padding:16px;}
-  .character-avatar{width:74px;height:74px;}
-  .result-score{font-size:1.5rem;}
-  .battle-table{display:block;overflow-x:auto;}
+  .battle-hero{padding:20px 16px;border-radius:16px;}
+  .character-card,.today-hero,.girls-talk,.strategy-card{padding:16px;}
+  .character-avatar{width:60px;height:60px;}
+  .result-score{font-size:1.4rem;}
 }
 </style>'''
 
@@ -212,12 +333,12 @@ def _get_gemini():
 def _ai(system: str, user: str, fallback: str) -> str:
     model = _get_gemini()
     if not model:
-        return f'<em style="color:#bbb;">[AIキー未設定]</em> {fallback}'
+        return fallback  # キー未設定時はフォールバック文をそのまま使う
     try:
         response = model.generate_content(f'system: {system}\nuser: {user}')
         return response.text.strip()
-    except Exception as e:
-        return f'<em style="color:#bbb;">[AIエラー: {e}]</em> {fallback}'
+    except Exception:
+        return fallback  # エラー時もフォールバック文に切り替え
 
 def _ai_raw(system: str, user: str) -> str:
     """JSON取得用（失敗時はNone）"""
@@ -231,14 +352,17 @@ def _ai_raw(system: str, user: str) -> str:
         return None
 
 # ---------------------------------------------------------------------------
-# アバターHTML（プレビューは常にプレースホルダー）
+# アバターHTML（プレビューはキャラ別プレースホルダー）
 # ---------------------------------------------------------------------------
-def _avatar_html(name: str, size: str = '92px') -> str:
+AVATAR_ICONS = {'rei': '👓', 'mirai': '🌸', 'ritu': '🎲'}
+
+def _avatar_html(name: str, size: str = '72px') -> str:
     profile = ANALYST_PROFILES[name]
+    icon = AVATAR_ICONS.get(name, '👤')
     return (
-        f'<div class="character-avatar" style="width:{size};height:{size};">'
-        f'<div class="character-avatar-placeholder">🖼️<br>{profile["name_jp"]}<br>'
-        f'<span style="font-size:.55rem;">※結果により変動</span></div>'
+        f'<div class="character-avatar placeholder-{name}" style="width:{size};height:{size};">'
+        f'<span class="avatar-icon">{icon}</span>'
+        f'<span class="avatar-name">{profile["name_short"]}</span>'
         f'</div>'
     )
 
@@ -298,7 +422,8 @@ def generate_girls_talk() -> list:
         system=PromptLoader.base_system() + f'\n\n## 会話生成ガイドライン\n\n{PromptLoader.talk()}',
         user=(f'今日の仮想投資結果：\n{summary}\n順位：{ranking_txt}\n\n'
               f'3人が今日の結果について1行ずつ会話する「反省会」シーンを書いてください。'
-              f'各キャラの性格が出るようにしてください。\n'
+              f'各キャラが自分の成績だけでなく、他2人の成績と比較しながら話すようにしてください。\n'
+              f'（例：勝ったキャラは負けたキャラをいじる、負けたキャラは勝ったキャラに悔しがる）\n'
               f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
               f'[{{"name":"rei","line":"..."}},{{"name":"mirai","line":"..."}},{{"name":"ritu","line":"..."}}]'),
     )
@@ -313,16 +438,26 @@ def generate_girls_talk() -> list:
             pass
     return fallback
 
-def generate_next_hook() -> str:
+def generate_next_hook(narrator: str = 'rei') -> str:
+    """「次回へのひとこと」をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': '明日も3人の勝負を、静かに見守ってください。',
+        'mirai': '明日もみんなの勝負、一緒に応援しましょう！',
+        'ritu': '明日もなんか面白いことありそうじゃん？また見てね！',
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
     ranking_txt = ', '.join(
         ANALYST_PROFILES[r['analyst_name']]['name_short'] for r in SAMPLE_RANKING
     )
+    tone = _narrator_tone_hint(narrator)
     return _ai(
-        system=PromptLoader.base_system('投資シミュレーションブログの編集者'),
+        system=PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
         user=(f'現在の順位: {ranking_txt}の順。\n'
-              f'読者が明日も見に来たくなるような、1文の締めの文章を書いてください。'
-              f'キャラ名を入れて、連載感を出してください。'),
-        fallback='明日も3人の勝負を、ゆるく見守ってください。',
+              f'【口調・語り手の指定】{tone}\n'
+              f'読者が明日も見に来たくなるような、1〜2文の締めの地の文を書いてください。'
+              f'キャラ名を入れて、連載感を出してください。'
+              f'地の文のみ（「玲：」などのセリフ形式は禁止）。'),
+        fallback=fallback,
     )
 
 # ---------------------------------------------------------------------------
@@ -404,10 +539,12 @@ def generate_morning_three() -> list:
     return fallback
 
 def generate_push_points() -> list:
+    # フォールバックは SAMPLE_DAILY の勝敗に合わせた情景描写にしておく
+    # （rei: 2勝1敗 / mirai: 1勝2敗 / ritu: 3勝0敗）
     fallback = [
-        {'name': 'rei',   'point': 'メガネを直しながら、今日のプラスを静かに確認。'},
-        {'name': 'mirai', 'point': '悔しそうにしながらも、明日の巻き返しを口にする。'},
-        {'name': 'ritu',  'point': '今日も全力で喜んだり、しょんぼりしたりの一日。'},
+        {'name': 'rei',   'point': 'メガネを直しながら、静かに今日のプラスを分析ノートへ書き留める。'},
+        {'name': 'mirai', 'point': '悔しそうに唇をとがらせながら、明日の銘柄をスマホで検索している。'},
+        {'name': 'ritu',  'point': '机に身を乗り出して、今日の3勝を全力で喜んでいる。'},
     ]
     summary = '\n'.join(
         f'{ANALYST_PROFILES[d["analyst_name"]]["name_jp"]}: '
@@ -440,10 +577,12 @@ def generate_push_points() -> list:
 def section_today_hero(hero: dict, intro: str) -> str:
     name = hero['analyst_name']
     profile = ANALYST_PROFILES[name]
+    hero_img = _scene_image_html(SCENE_IMAGES.get(name, ''), f'{profile["name_short"]}', 'scene-image hero-image', 'hero_scene')
     return (
         f'<section class="today-hero character-{name}">\n'
         f'  <p class="section-label">今日の主役</p>\n'
         f'  <h2>{profile["name_short"]}が今日の主役！</h2>\n'
+        f'{hero_img}'
         f'  <p>{intro}</p>\n'
         f'</section>\n'
     )
@@ -453,7 +592,7 @@ def section_result() -> str:
     ranking_map = {r['analyst_name']: i + 1 for i, r in enumerate(SAMPLE_RANKING)}
     total = len(SAMPLE_RANKING)
 
-    html = f'<h2>今日の勝負結果 <span style="font-size:.8em;font-weight:normal;">{SAMPLE_DATE}</span></h2>\n'
+    html = f'<h2>🏁 今日の勝負結果 <span style="font-size:.8em;font-weight:normal;">{SAMPLE_DATE}</span></h2>\n'
     for d in SAMPLE_DAILY:
         name = d['analyst_name']
         profile = ANALYST_PROFILES[name]
@@ -494,7 +633,7 @@ def section_result() -> str:
     return html
 
 def section_ranking() -> str:
-    html = '<h2>今月のランキング</h2>\n'
+    html = '<h2>🏆 今月のランキング</h2>\n'
     total = len(SAMPLE_RANKING)
     first_balance = SAMPLE_RANKING[0]['current_balance']
 
@@ -539,24 +678,48 @@ def section_ranking() -> str:
     return html
 
 def section_today_entry() -> str:
-    html = f'<h2>今日選んだ銘柄 <span style="font-size:.8em;font-weight:normal;">{SAMPLE_TRADE_DATE}</span></h2>\n'
+    html = f'<h2>📒 今日の作戦ノート <span style="font-size:.8em;font-weight:normal;">{SAMPLE_TRADE_DATE}</span></h2>\n'
     for analyst_name, profile in ANALYST_PROFILES.items():
         ae = [e for e in SAMPLE_TODAY_ENTRIES if e['analyst_name'] == analyst_name]
         if not ae:
             continue
-        html += f'<h3>{profile["name_jp"]}</h3>\n'
-        html += '<table class="battle-table"><tr><th>銘柄コード</th><th>銘柄名</th><th>投資額</th><th>選んだ理由</th></tr>\n'
+        icon = AVATAR_ICONS.get(analyst_name, '👤')
+        short = profile['name_short']
+        name_jp = profile['name_jp']
+        role = profile['role']
+        html += (
+            f'<section class="strategy-card character-{analyst_name}">\n'
+            f'  <div class="strategy-card-header">\n'
+            f'    <div class="character-avatar placeholder-{analyst_name}">\n'
+            f'      <span class="avatar-icon">{icon}</span>\n'
+            f'      <span class="avatar-name">{short}</span>\n'
+            f'    </div>\n'
+            f'    <div>\n'
+            f'      <h3 class="character-name">{name_jp}の作戦ノート</h3>\n'
+            f'      <p class="character-role">{role}</p>\n'
+            f'    </div>\n'
+            f'  </div>\n'
+            f'  <div class="entry-chip-list">\n'
+        )
+        reasons = []
         total = 0
         for e in ae:
             approx_man = round(e['buy_amount'] / 10000)
             total += e['buy_amount']
             html += (
-                f'<tr><td>{e["stock_code"]}</td>'
-                f'<td>{e["stock_name"]}</td>'
-                f'<td>約{approx_man}万円</td>'
-                f'<td>{e["prediction_reason"]}</td></tr>\n'
+                f'    <div class="entry-chip">'
+                f'<span class="stock-code">{e["stock_code"]}</span>'
+                f'<strong>{e["stock_name"]}</strong>'
+                f'<span class="amount">約{approx_man}万円</span>'
+                f'</div>\n'
             )
-        html += f'</table>\n<p class="entry-total">合計　約{round(total / 10000)}万円</p>\n'
+            reasons.append(e.get('prediction_reason', ''))
+        html += '  </div>\n'
+        total_man = round(total / 10000)
+        html += f'  <div class="strategy-total">今日の作戦予算：<strong>合計 約{total_man}万円</strong></div>\n'
+        reason_text = '／'.join(r for r in reasons if r)
+        if reason_text:
+            html += f'  <div class="strategy-reason">{reason_text}</div>\n'
 
         stocks = [e['stock_name'] for e in ae]
         comment = _ai(
@@ -566,15 +729,14 @@ def section_today_entry() -> str:
             fallback=f'今日は{"、".join(stocks)}に注目しています。',
         )
         html += (
-            f'<div class="character-inline">\n'
-            f'  {_avatar_html(analyst_name, "56px")}\n'
-            f'  <div class="character-balloon" style="flex:1;">{comment}</div>\n'
-            f'</div>\n'
+            f'  <div class="character-balloon">{comment}</div>\n'
+            f'</section>\n'
         )
     return html
 
 def section_strategy_talk(talk_lines: list) -> str:
-    html = '<section class="strategy-talk">\n<h2>今日の作戦会議</h2>\n'
+    html = '<section class="strategy-talk">\n<h2>☀️ 今日の作戦会議</h2>\n'
+    html += _scene_image_html(SCENE_IMAGES['morning_scene'], '朝の作戦会議をする3人', 'scene-image scene-image-main', 'morning_scene')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -584,7 +746,8 @@ def section_strategy_talk(talk_lines: list) -> str:
     return html
 
 def section_morning_three(talk_lines: list) -> str:
-    html = '<section class="strategy-talk">\n<h2>今朝の3人</h2>\n'
+    html = '<section class="strategy-talk morning-three">\n<h2>💬 今朝の3人</h2>\n'
+    html += _scene_image_html('', '今朝の3人', 'scene-image scene-image-sub', 'morning_sub_scene')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -607,7 +770,8 @@ def section_morning_link(url: str = None) -> str:
     return f'<div class="morning-link">📋 <a href="{url}">朝の作戦会議はこちら</a></div>\n'
 
 def section_girls_talk(talk_lines: list) -> str:
-    html = '<section class="girls-talk">\n<h2>今日の反省会</h2>\n'
+    html = '<section class="girls-talk">\n<h2>🌙 今日の反省会</h2>\n'
+    html += _scene_image_html(SCENE_IMAGES['evening_scene'], '夜の反省会をする3人', 'scene-image scene-image-main', 'night_reflection_scene')
     for line in talk_lines:
         name = line.get('name', '')
         text = line.get('line', '')
@@ -617,7 +781,8 @@ def section_girls_talk(talk_lines: list) -> str:
     return html
 
 def section_push_points(push_points: list) -> str:
-    html = '<section class="push-points">\n<h2>今日のハイライト</h2>\n'
+    html = '<section class="push-points">\n<h2>✨ 今日の名場面</h2>\n'
+    html += _scene_image_html('', '今日の名場面', 'scene-image scene-image-sub', 'highlight_scene')
     for item in push_points:
         name = item.get('name', '')
         point = item.get('point', '')
@@ -627,7 +792,7 @@ def section_push_points(push_points: list) -> str:
     return html
 
 def section_cumulative() -> str:
-    html = '<h2>これまでのMVP記録</h2>\n'
+    html = '<h2>🏅 MVP記録</h2>\n'
     for i, r in enumerate(SAMPLE_CUMULATIVE_MVP):
         name_jp = ANALYST_PROFILES[r['analyst_name']]['name_jp']
         medal = RANK_MEDAL.get(i + 1, '🏅')
@@ -644,10 +809,116 @@ def section_cumulative() -> str:
         )
     return html
 
+def generate_morning_beginning(narrator: str = 'rei') -> str:
+    """「☕ 今朝のはじまり」の本文をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': (
+            '昨日は律が大きく前に出て、玲は落ち着いて積み上げる展開でした。'
+            'みらいは少し悔しい朝かもしれませんが、今朝も3人それぞれの作戦が始まります。'
+        ),
+        'mirai': (
+            '昨日は律が大暴れでしたね！悔しいけど、今日はここから巻き返します。'
+            'それぞれの作戦、一緒に見ていきましょう！'
+        ),
+        'ritu': (
+            '昨日の結果はさておき、今日も勝負の朝です。週末前ラスト、なんか面白いことありそうじゃん？'
+            '3人の作戦を見ていきます！'
+        ),
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
+    prev_summary = '前営業日の結果：' + '、'.join(
+        f'{ANALYST_PROFILES[d["analyst_name"]]["name_short"]}が'
+        f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円'
+        f'（{d["win_count"]}勝{d["lose_count"]}敗）'
+        for d in SAMPLE_DAILY
+    )
+    ranking_txt = '現在の月間順位：' + '、'.join(
+        f'{i+1}位: {ANALYST_PROFILES[r["analyst_name"]]["name_short"]}'
+        for i, r in enumerate(SAMPLE_RANKING)
+    )
+    tone = _narrator_tone_hint(narrator)
+    return _ai(
+        PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
+        (
+            f'{prev_summary}\n{ranking_txt}\n\n'
+            f'朝記事「☕ 今朝のはじまり」の本文を2〜4文で書いてください。\n'
+            f'【口調・語り手の指定】{tone}\n'
+            f'前日の流れと今の順位をふまえた3人の今朝の空気を描写し、文末は今日の作戦会議へつなげてください。\n'
+            f'地の文のみ（「玲：」などのセリフ形式は禁止）。'
+        ),
+        fallback,
+    )
+
+
+def generate_night_beginning(narrator: str = 'rei') -> str:
+    """「🌙 夜のはじまり」の本文をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': (
+            '今日の勝負が終わって、3人はそれぞれの結果を持ち寄りました。'
+            '大きく笑う子もいれば、少し悔しそうに手帳を握る子もいます。'
+            'まずは、今日いちばん空気を動かした主役から見ていきます。'
+        ),
+        'mirai': (
+            '今日の勝負、結果が出ましたよ！ドキドキしながら数字を確認しました。'
+            '笑い声が聞こえた子もいれば、唸り声が聞こえた子もいます。'
+            'まずは今日の主役から見ていきましょう！'
+        ),
+        'ritu': (
+            '今日の勝負終わったよ〜！みんなどうだったんだろ？'
+            '結果見る前からなんか空気でわかる気がするんだけどね笑。'
+            'とりあえず今日いちばんやらかした、もとい活躍した子から行くよ！'
+        ),
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
+    hero_char = max(SAMPLE_DAILY, key=lambda d: abs(d['total_profit_loss']))
+    summary = '\n'.join(
+        f'{ANALYST_PROFILES[d["analyst_name"]]["name_short"]}: '
+        f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円 '
+        f'（{d["win_count"]}勝{d["lose_count"]}敗）'
+        for d in SAMPLE_DAILY
+    )
+    hero_name = ANALYST_PROFILES[hero_char['analyst_name']]['name_short']
+    tone = _narrator_tone_hint(narrator)
+    return _ai(
+        PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
+        (
+            f'今日の仮想投資結果：\n{summary}\n今日の主役候補: {hero_name}\n\n'
+            f'夜記事「🌙 夜のはじまり」の本文を2〜4文で書いてください。\n'
+            f'【口調・語り手の指定】{tone}\n'
+            f'結果の数字はまだ出さず、勝負が終わった直後の3人の空気・表情を描写し、'
+            f'文末は「まずは今日の主役から」でつなげてください。\n'
+            f'地の文のみ（「玲：」などのセリフ形式は禁止）。'
+        ),
+        fallback,
+    )
+
+
+def section_morning_beginning(text: str) -> str:
+    return (
+        '<section class="day-beginning morning-beginning">\n'
+        '<h2>☕ 今朝のはじまり</h2>\n'
+        f'<p class="beginning-text">{text}</p>\n'
+        '</section>\n'
+    )
+
+
+def section_night_beginning(text: str) -> str:
+    return (
+        '<section class="day-beginning night-beginning">\n'
+        '<h2>🌙 夜のはじまり</h2>\n'
+        f'<p class="beginning-text">{text}</p>\n'
+        '</section>\n'
+    )
+
+
 # ---------------------------------------------------------------------------
 # HTML組み立て — 朝記事
 # ---------------------------------------------------------------------------
 def build_morning_html() -> str:
+    narrator = get_weekday_narrator(SAMPLE_TRADE_DATE)
+    print(f'  [朝記事] 今朝のはじまり（ナレーター: {narrator}）...')
+    morning_beginning = generate_morning_beginning(narrator)
+
     print('  [朝記事] オープニング生成中...')
     opening = generate_morning_opening()
     subtitle = opening.get('subtitle', '今日の3人のエントリー')
@@ -683,6 +954,7 @@ def build_morning_html() -> str:
         preview_notice,
         hero_html,
         notice,
+        section_morning_beginning(morning_beginning),
         section_strategy_talk(talk_lines),
         s_entry,
         section_morning_three(morning_three),
@@ -695,6 +967,10 @@ def build_morning_html() -> str:
 # HTML組み立て — 夜記事
 # ---------------------------------------------------------------------------
 def build_evening_html() -> str:
+    narrator = get_weekday_narrator(SAMPLE_DATE)
+    print(f'  [夜記事] 夜のはじまり（ナレーター: {narrator}）...')
+    night_beginning = generate_night_beginning(narrator)
+
     print('  [夜記事] リード文...')
     lead = generate_lead()
 
@@ -705,8 +981,8 @@ def build_evening_html() -> str:
     print('  [夜記事] 反省会...')
     talk_lines = generate_girls_talk()
 
-    print('  [夜記事] 明日へのひとこと...')
-    next_hook = generate_next_hook()
+    print(f'  [夜記事] 明日へのひとこと（ナレーター: {narrator}）...')
+    next_hook = generate_next_hook(narrator)
 
     print('  [夜記事] 推しポイント...')
     push_points = generate_push_points()
@@ -737,11 +1013,12 @@ def build_evening_html() -> str:
         section_morning_link(SAMPLE_MORNING_POST_URL),
         hero_html,
         notice,
+        section_night_beginning(night_beginning),
         section_today_hero(hero_char, hero_intro),
         s_result,
         section_girls_talk(talk_lines),
-        s_rank,
         section_push_points(push_points),
+        s_rank,
         f'<p class="next-hook">{next_hook}</p>',
         s_cum,
         DISCLAIMER,
