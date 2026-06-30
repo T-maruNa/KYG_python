@@ -471,3 +471,4 @@ MAX_CANDIDATES_PER_RANGE=30
 - 週次、月次ランキング記事
 - キャラクターごとの学習フィードバック
 - AdSense向けの固定ページ整備
+- [Phase 2] 読者が推しキャラに応援コメントを送り、記事内でキャラが反応する参加型機能（[設計メモ](docs/future_reader_comment_feature.md)）
