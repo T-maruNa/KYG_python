@@ -1,5 +1,5 @@
 from typing import Dict, List
-from src.ai_clients.gemini_client import GeminiClient
+from src.ai_clients.openai_client import OpenAIClient
 
 class IchinoseRitu:
     def __init__(self):
@@ -9,8 +9,8 @@ class IchinoseRitu:
         self.style = "分析なんてしない勘で選ぶ"
         self.description = "敬語は使わず、豪快な性格の女性です。話し方は男らしいですが、女性です。"
         self.focus = "ガチの乱数"
-        self.model = "gemini"
-        self.client = GeminiClient()
+        self.model = "openai"
+        self.client = OpenAIClient()
 
     def stock_run(self, messages: List[Dict[str, str]]) -> None:
         """

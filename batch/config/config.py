@@ -5,11 +5,21 @@ load_dotenv()
 
 
 class Config:
-    # AI API
+    # AI API キー
     OPENAI_STOCK_API_KEY = os.getenv('OPENAI_STOCK_API_KEY')
     OPENAI_BLOG_API_KEY = os.getenv('OPENAI_BLOG_API_KEY')
+    # Gemini は初期運用では使わない。将来の実験用にキー読み込みだけ残す
     GEMINI_STOCK_API_KEY = os.getenv('GEMINI_STOCK_API_KEY')
     GEMINI_BLOG_API_KEY = os.getenv('GEMINI_BLOG_API_KEY')
+
+    # テキスト生成プロバイダー設定
+    TEXT_PROVIDER = os.getenv('TEXT_PROVIDER', 'openai')
+    TEXT_MODEL    = os.getenv('TEXT_MODEL', 'gpt-4.1-mini')
+
+    # マルチプロバイダー実験フラグ（false = OpenAI一本）
+    ENABLE_MULTI_PROVIDER_EXPERIMENT = os.getenv('ENABLE_MULTI_PROVIDER_EXPERIMENT', 'false').lower() == 'true'
+    ENABLE_TEXT_FALLBACK             = os.getenv('ENABLE_TEXT_FALLBACK', 'false').lower() == 'true'
+    ENABLE_GOOGLE_PROVIDER           = os.getenv('ENABLE_GOOGLE_PROVIDER', 'false').lower() == 'true'
 
     # DB (PostgreSQL)
     DATABASE_URL = os.getenv('DATABASE_URL', '')
@@ -21,8 +31,8 @@ class Config:
 
     # AI API 予算ガード
     MONTHLY_AI_BUDGET_JPY = int(os.getenv('MONTHLY_AI_BUDGET_JPY', '3000'))
-    DAILY_AI_CALL_LIMIT = int(os.getenv('DAILY_AI_CALL_LIMIT', '5'))
-    AI_RETRY_LIMIT = int(os.getenv('AI_RETRY_LIMIT', '2'))
+    DAILY_AI_CALL_LIMIT   = int(os.getenv('DAILY_AI_CALL_LIMIT', '10'))
+    AI_RETRY_LIMIT        = int(os.getenv('AI_RETRY_LIMIT', '2'))
     ENABLE_MONTHLY_MVP_IMAGE = os.getenv('ENABLE_MONTHLY_MVP_IMAGE', 'true').lower() == 'true'
     MAX_CANDIDATES_PER_RANGE = int(os.getenv('MAX_CANDIDATES_PER_RANGE', '30'))
 

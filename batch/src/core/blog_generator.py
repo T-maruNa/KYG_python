@@ -14,7 +14,7 @@ from src.database.t_investment_history_manager import TInvestmentHistoryManager
 from src.database.t_monthly_result_manager import TMonthlyResultManager
 from src.database.t_character_asset_manager import TCharacterAssetManager
 from src.core.stats_aggregator import StatsAggregator
-from src.ai_clients.gemini_client import GeminiClient
+from src.ai_clients.openai_client import OpenAIClient
 from src.core.ai_budget_guard import AIBudgetGuard
 from src.core.prompt_loader import PromptLoader
 from config.config import config
@@ -323,7 +323,7 @@ class BlogGenerator:
         self.monthly_manager = TMonthlyResultManager()
         self.asset_manager = TCharacterAssetManager()
         self.stats = StatsAggregator()
-        self.gemini = GeminiClient()
+        self.ai = OpenAIClient()
         self.guard = AIBudgetGuard()
         # 画像生成はオプション機能。パッケージ未インストール or API キー未設定でも
         # image_service = None になるだけで記事生成はそのまま動く
@@ -1036,7 +1036,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='morning_opening', model='gemini',
+                self.ai.execute_chat, messages, call_type='morning_opening', model='openai',
             )
             if raw:
                 m = re.search(r'\{.*\}', raw, re.DOTALL)
@@ -1083,7 +1083,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='morning_three', model='gemini',
+                self.ai.execute_chat, messages, call_type='morning_three', model='openai',
             )
             if raw:
                 m = re.search(r'\[.*?\]', raw, re.DOTALL)
@@ -1151,7 +1151,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='morning_beginning', model='gemini',
+                self.ai.execute_chat, messages, call_type='morning_beginning', model='openai',
             )
             if raw:
                 return raw.strip()
@@ -1197,7 +1197,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='result_opening', model='gemini',
+                self.ai.execute_chat, messages, call_type='result_opening', model='openai',
             )
             if raw:
                 m = re.search(r'\{.*\}', raw, re.DOTALL)
@@ -1263,7 +1263,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='night_beginning', model='gemini',
+                self.ai.execute_chat, messages, call_type='night_beginning', model='openai',
             )
             if raw:
                 return raw.strip()
@@ -1301,7 +1301,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='push_points', model='gemini',
+                self.ai.execute_chat, messages, call_type='push_points', model='openai',
             )
             if raw:
                 m = re.search(r'\[.*?\]', raw, re.DOTALL)
@@ -1359,7 +1359,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='ranking_narrative', model='gemini',
+                self.ai.execute_chat, messages, call_type='ranking_narrative', model='openai',
             )
             if raw:
                 m = re.search(r'\[.*?\]', raw, re.DOTALL)
@@ -1394,7 +1394,7 @@ class BlogGenerator:
                 )},
             ]
             result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='lead', model='gemini',
+                self.ai.execute_chat, messages, call_type='lead', model='openai',
             )
             return result.strip() if result else summary
         except Exception:
@@ -1414,7 +1414,7 @@ class BlogGenerator:
                 )},
             ]
             result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='hero_intro', model='gemini',
+                self.ai.execute_chat, messages, call_type='hero_intro', model='openai',
             )
             return result.strip() if result else f'今日は{sign}{profit:,}円。{win}勝{lose}敗でした。'
         except Exception:
@@ -1456,7 +1456,7 @@ class BlogGenerator:
                 )},
             ]
             raw = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='girls_talk', model='gemini',
+                self.ai.execute_chat, messages, call_type='girls_talk', model='openai',
             )
             if raw:
                 m = re.search(r'\[.*?\]', raw, re.DOTALL)
@@ -1500,7 +1500,7 @@ class BlogGenerator:
                 )},
             ]
             result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='next_hook', model='gemini',
+                self.ai.execute_chat, messages, call_type='next_hook', model='openai',
             )
             return result.strip() if result else f'明日は{last}が巻き返すのか、{first}がこのまま走るのか。次回もゆるく見守ってください。'
         except Exception:
@@ -1540,7 +1540,7 @@ class BlogGenerator:
                 )},
             ]
             result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='result_teaser', model='gemini',
+                self.ai.execute_chat, messages, call_type='result_teaser', model='openai',
             )
             return result.strip() if result else fallback
         except Exception:
@@ -1569,7 +1569,7 @@ class BlogGenerator:
                 )},
             ]
             result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='character_comment', model='gemini',
+                self.ai.execute_chat, messages, call_type='character_comment', model='openai',
             )
             return result.strip() if result else f'今日は{sign}{profit:,}円でした。'
         except Exception:
@@ -1587,7 +1587,7 @@ class BlogGenerator:
                 )},
             ]
             result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='ranking_comment', model='gemini',
+                self.ai.execute_chat, messages, call_type='ranking_comment', model='openai',
             )
             return result.strip() if result else rank_ctx
         except Exception:
@@ -1606,7 +1606,7 @@ class BlogGenerator:
                 )},
             ]
             result = self.guard.execute(
-                self.gemini.execute_chat, messages, call_type='entry_comment', model='gemini',
+                self.ai.execute_chat, messages, call_type='entry_comment', model='openai',
             )
             return result.strip() if result else f'今日は{stocks_str}に注目しています。'
         except Exception:

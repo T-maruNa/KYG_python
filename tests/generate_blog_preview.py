@@ -1,12 +1,12 @@
 """
 ブログプレビュー生成スクリプト
 
-DBや予算ガードを使わず、サンプルデータ＋Gemini APIで
+DBや予算ガードを使わず、サンプルデータ＋OpenAI APIで
 実際のブログHTMLを生成して blog_preview.html に出力する。
 
 朝記事（作戦会議）と夜記事（結果発表）の両方を1ファイルに出力する。
 
-GEMINI_STOCK_API_KEY が未設定の場合はAIコメントをプレースホルダーで代替。
+OPENAI_STOCK_API_KEY が未設定の場合はAIコメントをプレースホルダーで代替。
 
 Usage:
     cd tests
@@ -323,39 +323,48 @@ BATTLE_CSS = '''<style>
 </style>'''
 
 # ---------------------------------------------------------------------------
-# Gemini呼び出し
+# OpenAI呼び出し
 # ---------------------------------------------------------------------------
-_gemini_model = None
+_openai_client = None
 
-def _get_gemini():
-    global _gemini_model
-    api_key = os.getenv('GEMINI_STOCK_API_KEY') or os.getenv('GEMINI_API_KEY')
+def _get_openai():
+    global _openai_client
+    api_key = os.getenv('OPENAI_STOCK_API_KEY') or os.getenv('OPENAI_API_KEY')
     if not api_key:
         return None
-    if _gemini_model is None:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel('gemini-2.0-flash')
-    return _gemini_model
+    if _openai_client is None:
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
+
+_TEXT_MODEL = os.getenv('TEXT_MODEL', 'gpt-4.1-mini')
 
 def _ai(system: str, user: str, fallback: str) -> str:
-    model = _get_gemini()
-    if not model:
+    client = _get_openai()
+    if not client:
         return fallback  # キー未設定時はフォールバック文をそのまま使う
     try:
-        response = model.generate_content(f'system: {system}\nuser: {user}')
-        return response.text.strip()
+        response = client.chat.completions.create(
+            model=_TEXT_MODEL,
+            messages=[{'role': 'system', 'content': system},
+                      {'role': 'user', 'content': user}],
+        )
+        return response.choices[0].message.content.strip()
     except Exception:
         return fallback  # エラー時もフォールバック文に切り替え
 
 def _ai_raw(system: str, user: str) -> str:
     """JSON取得用（失敗時はNone）"""
-    model = _get_gemini()
-    if not model:
+    client = _get_openai()
+    if not client:
         return None
     try:
-        response = model.generate_content(f'system: {system}\nuser: {user}')
-        return response.text.strip()
+        response = client.chat.completions.create(
+            model=_TEXT_MODEL,
+            messages=[{'role': 'system', 'content': system},
+                      {'role': 'user', 'content': user}],
+        )
+        return response.choices[0].message.content.strip()
     except Exception:
         return None
 
