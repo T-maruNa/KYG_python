@@ -22,33 +22,37 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'batch'))
 from src.core.prompt_loader import PromptLoader
 
 # blog_generator.py と同定義（インポートすると psycopg2 等が連鎖ロードされるため直接定義）
-_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu'}
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu', 5: 'ritu', 6: 'random'}
 _NARRATOR_TONE = {
     'rei': (
         '鷲見 玲（rei）の口調で書いてください。'
-        '落ち着いた大人女子。敬語ベースだが固くなりすぎない。'
-        '冷静に週の流れや順位を整理しながら、読者を自然に記事へ引き込む語り口。'
-        'ドヤりは控えめに。'
+        '週の始まりや中間整理の担当。冷静で落ち着いている。敬語ベースだが固くなりすぎない。'
+        '前営業日の流れや順位を静かに整理して、読者を自然に記事へ引き込む語り口。'
+        'ドヤりは控えめ。文末は「〜します」「〜確認します」程度の落ち着いた締め方。'
     ),
     'mirai': (
         '桜庭 みらい（mirai）の口調で書いてください。'
-        '明るくポジティブな新社会人。少しくだけた話し言葉でもOK。'
-        '負けていても前を向く、頑張り屋の語り口。'
-        '感情が少し出てよいが、泣かせすぎない。'
+        '週前半・週後半を前向きに進める担当。明るくポジティブ、一生懸命。'
+        '少しくだけた話し言葉でもOK。負けていても「ここから」と前を向く。'
+        '感情が少し出てよいが、泣かせすぎない。文末は「〜しましょう」「〜始めます」くらい。'
     ),
     'ritu': (
         '一ノ瀬 律（ritu）の口調で書いてください。'
-        '金髪ギャル。敬語は使わない。軽くてノリが良い語り口。'
-        '週末前の解放感を少し出してよい。勝ったら喜ぶ、負けても「切り替えよ」くらいのテンション。'
-        'ただし勝負はちゃんと見ている。'
+        '金曜・週末担当。週末前の開放感を少し出してよい。ノリが軽い。敬語は使わない。'
+        '勝ったら喜ぶ、負けても「切り替えよ！週末あるし」くらいの軽さ。'
+        'でも勝負はちゃんと見ている。文末は「〜じゃん？」「〜行くよ！」程度のカジュアルな締め。'
     ),
 }
 
 def get_weekday_narrator(date_str: str) -> str:
+    import random as _random
     from datetime import date as _date
     try:
         d = _date.fromisoformat(date_str)
-        return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
+        narrator = _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
+        if narrator == 'random':
+            return _random.choice(['rei', 'mirai', 'ritu'])
+        return narrator
     except Exception:
         return 'rei'
 
@@ -634,6 +638,56 @@ def section_result() -> str:
         )
     return html
 
+def generate_ranking_narrative() -> list:
+    """各キャラのランキングコメントをAIで生成する（順位＋今日の結果感情を含む）。"""
+    daily_map = {d['analyst_name']: d for d in SAMPLE_DAILY}
+    ranking_summary = '\n'.join(
+        f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"],{}).get("name_short","")}（'
+        f'今日{"+" if daily_map.get(r["analyst_name"],{}).get("total_profit_loss",0)>=0 else ""}'
+        f'{daily_map.get(r["analyst_name"],{}).get("total_profit_loss",0):,}円）'
+        for i, r in enumerate(SAMPLE_RANKING)
+    )
+    raw = _ai_raw(
+        system=PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
+        user=(
+            f'今日のランキングと結果：\n{ranking_summary}\n\n'
+            f'各キャラクターのランキングコメントを生成してください。\n'
+            f'・順位だけで終わらせず、今日の結果に合わせたキャラの感情を1文で入れてください\n'
+            f'・長くしすぎない（1文以内）\n'
+            f'・キャラの口調に合わせてください\n'
+            f'・投資助言・断言表現は禁止です\n'
+            f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
+            f'[{{"name":"rei","comment":"..."}},{{"name":"mirai","comment":"..."}},{{"name":"ritu","comment":"..."}}]'
+        ),
+    )
+    if raw:
+        try:
+            m = re.search(r'\[.*?\]', raw, re.DOTALL)
+            if m:
+                parsed = json.loads(m.group())
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    return parsed
+        except Exception:
+            pass
+    # フォールバック: 順位＋今日の感情を含む簡易コメント
+    fallback = []
+    for i, r in enumerate(SAMPLE_RANKING):
+        name = r['analyst_name']
+        profile = ANALYST_PROFILES.get(name, {})
+        short = profile.get('name_short', name)
+        d = daily_map.get(name, {})
+        profit = d.get('total_profit_loss', 0)
+        rank = i + 1
+        if rank == 1:
+            mood = 'ご機嫌' if profit >= 0 else '首位キープも複雑な表情'
+        elif rank == 2:
+            mood = '静かに追走中' if profit >= 0 else '差を意識しながらも落ち着いている'
+        else:
+            mood = '悔しいが明日に気持ちを向けている'
+        fallback.append({'name': name, 'comment': f'{short}：{mood}。'})
+    return fallback
+
+
 def section_ranking() -> str:
     html = '<h2>🏆 今月のランキング</h2>\n'
     total = len(SAMPLE_RANKING)
@@ -659,17 +713,21 @@ def section_ranking() -> str:
             f'</div>\n'
         )
 
+    narrative = generate_ranking_narrative()
+    narrative_map = {item['name']: item.get('comment', '') for item in narrative}
     for i, r in enumerate(SAMPLE_RANKING):
         name = r['analyst_name']
         profile = ANALYST_PROFILES[name]
         gap = first_balance - r['current_balance']
         rank = i + 1
-        rank_ctx = f'{total}人中1位です。' if rank == 1 else f'{total}人中{rank}位（差：{gap:,}円）です。'
-        comment = _ai(
-            system=PromptLoader.character_system(name, profile['name_jp']),
-            user=(f'{rank_ctx}順位についてキャラクターらしい一言を1文で。'),
-            fallback=f'{rank}位です。',
-        )
+        comment = narrative_map.get(name, '')
+        if not comment:
+            rank_ctx = f'{total}人中1位です。' if rank == 1 else f'{total}人中{rank}位（差：{gap:,}円）です。'
+            comment = _ai(
+                system=PromptLoader.character_system(name, profile['name_jp']),
+                user=(f'{rank_ctx}順位についてキャラクターらしい一言を1文で。'),
+                fallback=f'{rank}位です。',
+            )
         html += (
             f'<div class="ranking-inline">\n'
             f'  {_avatar_html(name, "56px")}\n'
@@ -1068,8 +1126,8 @@ def build_evening_html() -> str:
         section_girls_talk(talk_lines),
         section_push_points(push_points),
         s_rank,
-        f'<div class="next-hook">{_narrator_avatar_html(narrator)}{next_hook}</div>',
         s_cum,
+        f'<div class="next-hook">{_narrator_avatar_html(narrator)}{next_hook}</div>',
         DISCLAIMER,
         '</div>',
     ])

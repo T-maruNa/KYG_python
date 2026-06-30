@@ -226,29 +226,29 @@ _ASSET_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 _RANK_BADGE_CLASS = {1: 'rank-badge-1', 2: 'rank-badge-2', 3: 'rank-badge-3'}
 _RANK_MEDAL = {1: '🥇', 2: '🥈', 3: '🥉'}
 
-# 曜日ごとのナレーター担当（0=月, 1=火, 2=水, 3=木, 4=金）
-# 律はナレーション少なめ（金曜のみ）→ キャラとして週末に強く出る方がおいしいため
-_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu'}
+# 曜日ごとのナレーター担当（0=月, 1=火, 2=水, 3=木, 4=金, 5=土, 6=日）
+# 土曜は律、日曜はランダム（週末も投稿がある場合の保険）
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu', 5: 'ritu', 6: 'random'}
 
 # 曜日担当ナレーターごとの口調・役割ヒント（AI プロンプトに渡す）
 _NARRATOR_TONE = {
     'rei': (
         '鷲見 玲（rei）の口調で書いてください。'
-        '落ち着いた大人女子。敬語ベースだが固くなりすぎない。'
-        '冷静に週の流れや順位を整理しながら、読者を自然に記事へ引き込む語り口。'
-        'ドヤりは控えめに。'
+        '週の始まりや中間整理の担当。冷静で落ち着いている。敬語ベースだが固くなりすぎない。'
+        '前営業日の流れや順位を静かに整理して、読者を自然に記事へ引き込む語り口。'
+        'ドヤりは控えめ。文末は「〜します」「〜確認します」程度の落ち着いた締め方。'
     ),
     'mirai': (
         '桜庭 みらい（mirai）の口調で書いてください。'
-        '明るくポジティブな新社会人。少しくだけた話し言葉でもOK。'
-        '負けていても前を向く、頑張り屋の語り口。'
-        '感情が少し出てよいが、泣かせすぎない。'
+        '週前半・週後半を前向きに進める担当。明るくポジティブ、一生懸命。'
+        '少しくだけた話し言葉でもOK。負けていても「ここから」と前を向く。'
+        '感情が少し出てよいが、泣かせすぎない。文末は「〜しましょう」「〜始めます」くらい。'
     ),
     'ritu': (
         '一ノ瀬 律（ritu）の口調で書いてください。'
-        '金髪ギャル。敬語は使わない。軽くてノリが良い語り口。'
-        '週末前の解放感を少し出してよい。勝ったら喜ぶ、負けても「切り替えよ」くらいのテンション。'
-        'ただし勝負はちゃんと見ている。'
+        '金曜・週末担当。週末前の開放感を少し出してよい。ノリが軽い。敬語は使わない。'
+        '勝ったら喜ぶ、負けても「切り替えよ！週末あるし」くらいの軽さ。'
+        'でも勝負はちゃんと見ている。文末は「〜じゃん？」「〜行くよ！」程度のカジュアルな締め。'
     ),
 }
 
@@ -256,12 +256,16 @@ _NARRATOR_TONE = {
 def get_weekday_narrator(date_str: str) -> str:
     """
     日付文字列（YYYY-MM-DD）から曜日担当ナレーターを返す。
-    土日祝は朝記事を投稿しないが、万が一呼ばれた場合は rei をデフォルトとする。
+    日曜（weekday==6）は 'random' のためランダム選択する。
     """
+    import random as _random
     from datetime import date as _date
     try:
         d = _date.fromisoformat(date_str)
-        return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
+        narrator = _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
+        if narrator == 'random':
+            return _random.choice(['rei', 'mirai', 'ritu'])
+        return narrator
     except Exception:
         return 'rei'
 
@@ -482,7 +486,7 @@ class BlogGenerator:
             '実際の売買を行ったものではありません。</p>'
         )
 
-        ranking_narrative = self._generate_ranking_narrative(ranking)
+        ranking_narrative = self._generate_ranking_narrative(ranking, daily)
 
         sections = [
             BATTLE_CSS,
@@ -496,8 +500,8 @@ class BlogGenerator:
             self._section_girls_talk(girls_talk_lines, daily, image_url=img_night),
             self._section_push_points(push_points, image_url=img_highlight),
             self._section_ranking(ranking, year_month, narrative=ranking_narrative),
-            self._section_next_hook(next_hook, narrator),
             self._section_cumulative(cumulative_mvp),
+            self._section_next_hook(next_hook, narrator),
             DISCLAIMER,
             '</section>',
         ]
@@ -739,10 +743,8 @@ class BlogGenerator:
         return html
 
     def _section_ranking(self, ranking: List[Dict], year_month: str,
-                         narrative: str = None) -> str:
+                         narrative = None) -> str:
         html = '<h2>🏆 今月のランキング</h2>\n'
-        if narrative:
-            html += f'<p style="color:#7a6b80;font-size:.95rem;">{narrative}</p>\n'
         total = len(ranking)
         first_balance = ranking[0]['current_balance'] if ranking else 0
 
@@ -766,18 +768,52 @@ class BlogGenerator:
                 f'</div>\n'
             )
 
-        for i, r in enumerate(ranking):
-            name = r['analyst_name']
-            profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'personality': ''})
-            gap = first_balance - r['current_balance']
-            comment = self._ranking_comment(name, profile['personality'], i + 1, total, gap)
-            html += (
-                f'<div class="ranking-inline">\n'
-                f'  {_avatar_html(name, "happy", "56px")}\n'
-                f'  <div class="character-balloon" style="flex:1;">'
-                f'<strong>{profile["name_jp"]}</strong>：{comment}</div>\n'
-                f'</div>\n'
-            )
+        # narrative がリストの場合（_generate_ranking_narrative の新形式）は
+        # 各要素の name/comment でキャラバルーン表示する
+        if isinstance(narrative, list) and narrative:
+            narrative_map = {item['name']: item.get('comment', '') for item in narrative}
+            for i, r in enumerate(ranking):
+                name = r['analyst_name']
+                profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'personality': ''})
+                comment = narrative_map.get(name, '')
+                if not comment:
+                    gap = first_balance - r['current_balance']
+                    comment = self._ranking_comment(name, profile.get('personality', ''), i + 1, total, gap)
+                html += (
+                    f'<div class="ranking-inline">\n'
+                    f'  {_avatar_html(name, "happy", "56px")}\n'
+                    f'  <div class="character-balloon" style="flex:1;">'
+                    f'<strong>{profile["name_jp"]}</strong>：{comment}</div>\n'
+                    f'</div>\n'
+                )
+        elif isinstance(narrative, str) and narrative:
+            # 後方互換: 文字列ナレーションはそのまま表示
+            html += f'<p style="color:#7a6b80;font-size:.95rem;">{narrative}</p>\n'
+            for i, r in enumerate(ranking):
+                name = r['analyst_name']
+                profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'personality': ''})
+                gap = first_balance - r['current_balance']
+                comment = self._ranking_comment(name, profile.get('personality', ''), i + 1, total, gap)
+                html += (
+                    f'<div class="ranking-inline">\n'
+                    f'  {_avatar_html(name, "happy", "56px")}\n'
+                    f'  <div class="character-balloon" style="flex:1;">'
+                    f'<strong>{profile["name_jp"]}</strong>：{comment}</div>\n'
+                    f'</div>\n'
+                )
+        else:
+            for i, r in enumerate(ranking):
+                name = r['analyst_name']
+                profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'personality': ''})
+                gap = first_balance - r['current_balance']
+                comment = self._ranking_comment(name, profile.get('personality', ''), i + 1, total, gap)
+                html += (
+                    f'<div class="ranking-inline">\n'
+                    f'  {_avatar_html(name, "happy", "56px")}\n'
+                    f'  <div class="character-balloon" style="flex:1;">'
+                    f'<strong>{profile["name_jp"]}</strong>：{comment}</div>\n'
+                    f'</div>\n'
+                )
         return html
 
     def _section_today_entry(self, trade_date: str, entries: List[Dict]) -> str:
@@ -1263,25 +1299,62 @@ class BlogGenerator:
             pass
         return fallback
 
-    def _generate_ranking_narrative(self, ranking: List[Dict]) -> str:
-        """ランキングセクション上のナレーション行を生成する。"""
+    def _generate_ranking_narrative(self, ranking: List[Dict], daily: List[Dict] = None) -> List[Dict]:
+        """ランキングごとのキャラコメントをAIで生成する（順位+今日の結果感情を含める）。"""
         if not ranking:
-            return ''
-        first = ANALYST_PROFILES.get(ranking[0]['analyst_name'], {}).get('name_short', '')
+            return []
+
+        daily_map = {d['analyst_name']: d for d in (daily or [])}
+
+        fallback = []
+        for i, r in enumerate(ranking):
+            name = r['analyst_name']
+            profile = ANALYST_PROFILES.get(name, {})
+            short = profile.get('name_short', name)
+            d = daily_map.get(name, {})
+            profit = d.get('total_profit_loss', 0)
+            rank = i + 1
+            if rank == 1:
+                mood = 'ご機嫌' if profit >= 0 else '首位キープも複雑な表情'
+            elif rank == 2:
+                mood = '静かに追走中' if profit >= 0 else '差を意識しながらも落ち着いている'
+            else:
+                mood = '悔しいが明日に気持ちを向けている'
+            fallback.append({'name': name, 'comment': f'{short}：{mood}。'})
+
+        ranking_summary = '\n'.join(
+            f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"],{}).get("name_short","")}（'
+            f'今日{"+" if daily_map.get(r["analyst_name"],{}).get("total_profit_loss",0)>=0 else ""}'
+            f'{daily_map.get(r["analyst_name"],{}).get("total_profit_loss",0):,}円）'
+            for i, r in enumerate(ranking)
+        )
+
         try:
             messages = [
-                {'role': 'system', 'content': PromptLoader.base_system('投資シミュレーションブログの編集者')},
+                {'role': 'system', 'content': PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}'},
                 {'role': 'user', 'content': (
-                    f'現在1位は{first}。'
-                    f'ランキングセクションの冒頭に添える、短い1文のナレーションを書いてください。'
+                    f'今日のランキングと結果：\n{ranking_summary}\n\n'
+                    f'各キャラクターのランキングコメントを生成してください。\n'
+                    f'・順位だけで終わらせず、今日の結果に合わせたキャラの感情を1文で入れてください\n'
+                    f'・長くしすぎない（1文以内）\n'
+                    f'・キャラの口調に合わせてください\n'
+                    f'・投資助言・断言表現は禁止です\n'
+                    f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
+                    f'[{{"name":"rei","comment":"..."}},{{"name":"mirai","comment":"..."}},{{"name":"ritu","comment":"..."}}]'
                 )},
             ]
-            result = self.guard.execute(
+            raw = self.guard.execute(
                 self.gemini.execute_chat, messages, call_type='ranking_narrative', model='gemini',
             )
-            return result.strip() if result else ''
+            if raw:
+                m = re.search(r'\[.*?\]', raw, re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group())
+                    if isinstance(parsed, list) and len(parsed) > 0:
+                        return parsed
         except Exception:
-            return ''
+            pass
+        return fallback
 
     # ------------------------------------------------------------------
     # AI生成: ナレーション系
