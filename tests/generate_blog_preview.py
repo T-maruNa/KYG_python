@@ -20,6 +20,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'batch'))
 
 from src.core.prompt_loader import PromptLoader
+from src.core.blog_generator import get_weekday_narrator, _narrator_tone_hint
 
 # ---------------------------------------------------------------------------
 # サンプルデータ
@@ -404,16 +405,26 @@ def generate_girls_talk() -> list:
             pass
     return fallback
 
-def generate_next_hook() -> str:
+def generate_next_hook(narrator: str = 'rei') -> str:
+    """「次回へのひとこと」をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': '明日も3人の勝負を、静かに見守ってください。',
+        'mirai': '明日もみんなの勝負、一緒に応援しましょう！',
+        'ritu': '明日もなんか面白いことありそうじゃん？また見てね！',
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
     ranking_txt = ', '.join(
         ANALYST_PROFILES[r['analyst_name']]['name_short'] for r in SAMPLE_RANKING
     )
+    tone = _narrator_tone_hint(narrator)
     return _ai(
-        system=PromptLoader.base_system('投資シミュレーションブログの編集者'),
+        system=PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
         user=(f'現在の順位: {ranking_txt}の順。\n'
-              f'読者が明日も見に来たくなるような、1文の締めの文章を書いてください。'
-              f'キャラ名を入れて、連載感を出してください。'),
-        fallback='明日も3人の勝負を、ゆるく見守ってください。',
+              f'【口調・語り手の指定】{tone}\n'
+              f'読者が明日も見に来たくなるような、1〜2文の締めの地の文を書いてください。'
+              f'キャラ名を入れて、連載感を出してください。'
+              f'地の文のみ（「玲：」などのセリフ形式は禁止）。'),
+        fallback=fallback,
     )
 
 # ---------------------------------------------------------------------------
@@ -765,12 +776,23 @@ def section_cumulative() -> str:
         )
     return html
 
-def generate_morning_beginning() -> str:
-    """「☕ 今朝のはじまり」の本文をAIで生成。未設定時はフォールバック。"""
-    fallback = (
-        '昨日は律が大きく前に出て、玲は落ち着いて積み上げる展開に。'
-        'みらいはちょっと悔しい朝だけど、今日はまた手帳を開いて作戦会議です。'
-    )
+def generate_morning_beginning(narrator: str = 'rei') -> str:
+    """「☕ 今朝のはじまり」の本文をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': (
+            '昨日は律が大きく前に出て、玲は落ち着いて積み上げる展開でした。'
+            'みらいは少し悔しい朝かもしれませんが、今朝も3人それぞれの作戦が始まります。'
+        ),
+        'mirai': (
+            '昨日は律が大暴れでしたね！悔しいけど、今日はここから巻き返します。'
+            'それぞれの作戦、一緒に見ていきましょう！'
+        ),
+        'ritu': (
+            '昨日の結果はさておき、今日も勝負の朝です。週末前ラスト、なんか面白いことありそうじゃん？'
+            '3人の作戦を見ていきます！'
+        ),
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
     prev_summary = '前営業日の結果：' + '、'.join(
         f'{ANALYST_PROFILES[d["analyst_name"]]["name_short"]}が'
         f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円'
@@ -781,25 +803,40 @@ def generate_morning_beginning() -> str:
         f'{i+1}位: {ANALYST_PROFILES[r["analyst_name"]]["name_short"]}'
         for i, r in enumerate(SAMPLE_RANKING)
     )
+    tone = _narrator_tone_hint(narrator)
     return _ai(
-        PromptLoader.base_system(),
+        PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
         (
             f'{prev_summary}\n{ranking_txt}\n\n'
             f'朝記事「☕ 今朝のはじまり」の本文を2〜4文で書いてください。\n'
+            f'【口調・語り手の指定】{tone}\n'
             f'前日の流れと今の順位をふまえた3人の今朝の空気を描写し、文末は今日の作戦会議へつなげてください。\n'
-            f'地の文のみ（セリフ・箇条書き不要）。'
+            f'地の文のみ（「玲：」などのセリフ形式は禁止）。'
         ),
         fallback,
     )
 
 
-def generate_night_beginning() -> str:
-    """「🌙 夜のはじまり」の本文をAIで生成。未設定時はフォールバック。"""
-    fallback = (
-        '今日の勝負が終わって、3人はそれぞれの結果を持ち寄りました。'
-        '大きく笑う子もいれば、少し悔しそうに手帳を握る子もいます。'
-        'まずは、今日いちばん空気を動かした主役から見ていきます。'
-    )
+def generate_night_beginning(narrator: str = 'rei') -> str:
+    """「🌙 夜のはじまり」の本文をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': (
+            '今日の勝負が終わって、3人はそれぞれの結果を持ち寄りました。'
+            '大きく笑う子もいれば、少し悔しそうに手帳を握る子もいます。'
+            'まずは、今日いちばん空気を動かした主役から見ていきます。'
+        ),
+        'mirai': (
+            '今日の勝負、結果が出ましたよ！ドキドキしながら数字を確認しました。'
+            '笑い声が聞こえた子もいれば、唸り声が聞こえた子もいます。'
+            'まずは今日の主役から見ていきましょう！'
+        ),
+        'ritu': (
+            '今日の勝負終わったよ〜！みんなどうだったんだろ？'
+            '結果見る前からなんか空気でわかる気がするんだけどね笑。'
+            'とりあえず今日いちばんやらかした、もとい活躍した子から行くよ！'
+        ),
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
     hero_char = max(SAMPLE_DAILY, key=lambda d: abs(d['total_profit_loss']))
     summary = '\n'.join(
         f'{ANALYST_PROFILES[d["analyst_name"]]["name_short"]}: '
@@ -808,14 +845,16 @@ def generate_night_beginning() -> str:
         for d in SAMPLE_DAILY
     )
     hero_name = ANALYST_PROFILES[hero_char['analyst_name']]['name_short']
+    tone = _narrator_tone_hint(narrator)
     return _ai(
-        PromptLoader.base_system(),
+        PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
         (
             f'今日の仮想投資結果：\n{summary}\n今日の主役候補: {hero_name}\n\n'
             f'夜記事「🌙 夜のはじまり」の本文を2〜4文で書いてください。\n'
+            f'【口調・語り手の指定】{tone}\n'
             f'結果の数字はまだ出さず、勝負が終わった直後の3人の空気・表情を描写し、'
             f'文末は「まずは今日の主役から」でつなげてください。\n'
-            f'地の文のみ（セリフ・箇条書き不要）。'
+            f'地の文のみ（「玲：」などのセリフ形式は禁止）。'
         ),
         fallback,
     )
@@ -843,8 +882,9 @@ def section_night_beginning(text: str) -> str:
 # HTML組み立て — 朝記事
 # ---------------------------------------------------------------------------
 def build_morning_html() -> str:
-    print('  [朝記事] 今朝のはじまり...')
-    morning_beginning = generate_morning_beginning()
+    narrator = get_weekday_narrator(SAMPLE_TRADE_DATE)
+    print(f'  [朝記事] 今朝のはじまり（ナレーター: {narrator}）...')
+    morning_beginning = generate_morning_beginning(narrator)
 
     print('  [朝記事] オープニング生成中...')
     opening = generate_morning_opening()
@@ -894,8 +934,9 @@ def build_morning_html() -> str:
 # HTML組み立て — 夜記事
 # ---------------------------------------------------------------------------
 def build_evening_html() -> str:
-    print('  [夜記事] 夜のはじまり...')
-    night_beginning = generate_night_beginning()
+    narrator = get_weekday_narrator(SAMPLE_DATE)
+    print(f'  [夜記事] 夜のはじまり（ナレーター: {narrator}）...')
+    night_beginning = generate_night_beginning(narrator)
 
     print('  [夜記事] リード文...')
     lead = generate_lead()
@@ -907,8 +948,8 @@ def build_evening_html() -> str:
     print('  [夜記事] 反省会...')
     talk_lines = generate_girls_talk()
 
-    print('  [夜記事] 明日へのひとこと...')
-    next_hook = generate_next_hook()
+    print(f'  [夜記事] 明日へのひとこと（ナレーター: {narrator}）...')
+    next_hook = generate_next_hook(narrator)
 
     print('  [夜記事] 推しポイント...')
     push_points = generate_push_points()
