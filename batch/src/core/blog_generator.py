@@ -85,6 +85,30 @@ def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image',
         f'</div>\n'
     )
 
+def _narrator_avatar_html(narrator: str) -> str:
+    """ナレーターのアバターHTMLを返す（ナレーションセクション用）。"""
+    profile = ANALYST_PROFILES.get(narrator, {})
+    name_jp = profile.get('name_jp', narrator)
+    name_short = profile.get('name_short', narrator)
+    # キャラ固定画像があれば使う（CHAR_IMAGES は各キャラの base.png URL）
+    img_url = CHAR_IMAGES.get(narrator, '')
+    if img_url:
+        avatar_inner = f'<img src="{img_url}" alt="{name_short}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
+    else:
+        icons = {'rei': '👓', 'mirai': '🌸', 'ritu': '🎲'}
+        icon = icons.get(narrator, '👤')
+        avatar_inner = (
+            f'<span class="avatar-icon">{icon}</span>'
+            f'<span class="avatar-name">{name_short}</span>'
+        )
+    return (
+        f'<div class="narrator-header">'
+        f'<div class="character-avatar placeholder-{narrator}">{avatar_inner}</div>'
+        f'<span class="narrator-name">{name_jp}</span>'
+        f'</div>\n'
+    )
+
+
 FORBIDDEN_PHRASES = [
     '絶対', '確実', '必ず上がる', '買うべき', '儲かる', '保証', '推奨銘柄',
     '狙い目', '今が買い', 'おすすめ銘柄', '仕込み時', '勝てる銘柄',
@@ -161,6 +185,8 @@ BATTLE_CSS = '''<style>
 .morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
 .night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
 .beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
+.narrator-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.narrator-name{font-size:.88rem;color:#7a6b80;font-weight:600;}
 /* 免責 */
 .disclaimer-box{font-size:.86rem;color:#7a7280;background:#fafafa;border-radius:16px;padding:14px 16px;margin-top:32px;border:1px solid #eee;}
 /* 朝記事 */
@@ -366,7 +392,7 @@ class BlogGenerator:
             '<section class="battle-article">',
             hero_html,
             notice,
-            self._section_morning_beginning(morning_beginning),
+            self._section_morning_beginning(morning_beginning, narrator),
             self._section_strategy_talk(talk_lines, image_url=img_morning_scene),
             self._section_morning_entry(trade_date, today_entries),
             self._section_morning_three(morning_three, image_url=img_morning_sub),
@@ -463,7 +489,7 @@ class BlogGenerator:
             self._section_morning_link(morning_post_url),
             hero_html,
             notice,
-            self._section_night_beginning(night_beginning),
+            self._section_night_beginning(night_beginning, narrator),
             self._section_today_hero(hero_char, daily, image_url=img_hero),
             self._section_result(result_date, daily, [], ranking_by_analyst),
             self._section_girls_talk(girls_talk_lines, daily, image_url=img_night),
@@ -546,24 +572,28 @@ class BlogGenerator:
     # 内部セクション — 朝記事
     # ------------------------------------------------------------------
 
-    def _section_morning_beginning(self, text: str) -> str:
+    def _section_morning_beginning(self, text: str, narrator: str = 'rei') -> str:
         """朝記事: ☕ 今朝のはじまり（前日の流れ→今朝の空気を作る導入）"""
         if not text:
             return ''
+        avatar = _narrator_avatar_html(narrator)
         return (
             '<section class="day-beginning morning-beginning">\n'
             '<h2>☕ 今朝のはじまり</h2>\n'
+            f'{avatar}'
             f'<p class="beginning-text">{text}</p>\n'
             '</section>\n'
         )
 
-    def _section_night_beginning(self, text: str) -> str:
+    def _section_night_beginning(self, text: str, narrator: str = 'rei') -> str:
         """夜記事: 🌙 夜のはじまり（結果発表前に場の空気を作る導入）"""
         if not text:
             return ''
+        avatar = _narrator_avatar_html(narrator)
         return (
             '<section class="day-beginning night-beginning">\n'
             '<h2>🌙 夜のはじまり</h2>\n'
+            f'{avatar}'
             f'<p class="beginning-text">{text}</p>\n'
             '</section>\n'
         )

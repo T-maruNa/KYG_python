@@ -297,6 +297,8 @@ BATTLE_CSS = '''<style>
 .morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
 .night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
 .beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
+.narrator-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.narrator-name{font-size:.88rem;color:#7a6b80;font-weight:600;}
 /* 免責 */
 .disclaimer-box{font-size:.85rem;color:#7a7280;background:#fafafa;border-radius:14px;padding:14px 16px;margin-top:32px;border:1px solid #eee;background-image:none;}
 
@@ -893,19 +895,38 @@ def generate_night_beginning(narrator: str = 'rei') -> str:
     )
 
 
-def section_morning_beginning(text: str) -> str:
+def _narrator_avatar_html(narrator: str) -> str:
+    profile = ANALYST_PROFILES.get(narrator, {})
+    name_jp = profile.get('name_jp', narrator)
+    name_short = profile.get('name_short', narrator)
+    icons = {'rei': '👓', 'mirai': '🌸', 'ritu': '🎲'}
+    icon = icons.get(narrator, '👤')
+    return (
+        f'<div class="narrator-header">'
+        f'<div class="character-avatar placeholder-{narrator}">'
+        f'<span class="avatar-icon">{icon}</span>'
+        f'<span class="avatar-name">{name_short}</span>'
+        f'</div>'
+        f'<span class="narrator-name">{name_jp}</span>'
+        f'</div>\n'
+    )
+
+
+def section_morning_beginning(text: str, narrator: str = 'rei') -> str:
     return (
         '<section class="day-beginning morning-beginning">\n'
         '<h2>☕ 今朝のはじまり</h2>\n'
+        f'{_narrator_avatar_html(narrator)}'
         f'<p class="beginning-text">{text}</p>\n'
         '</section>\n'
     )
 
 
-def section_night_beginning(text: str) -> str:
+def section_night_beginning(text: str, narrator: str = 'rei') -> str:
     return (
         '<section class="day-beginning night-beginning">\n'
         '<h2>🌙 夜のはじまり</h2>\n'
+        f'{_narrator_avatar_html(narrator)}'
         f'<p class="beginning-text">{text}</p>\n'
         '</section>\n'
     )
@@ -954,7 +975,7 @@ def build_morning_html() -> str:
         preview_notice,
         hero_html,
         notice,
-        section_morning_beginning(morning_beginning),
+        section_morning_beginning(morning_beginning, narrator),
         section_strategy_talk(talk_lines),
         s_entry,
         section_morning_three(morning_three),
@@ -1013,7 +1034,7 @@ def build_evening_html() -> str:
         section_morning_link(SAMPLE_MORNING_POST_URL),
         hero_html,
         notice,
-        section_night_beginning(night_beginning),
+        section_night_beginning(night_beginning, narrator),
         section_today_hero(hero_char, hero_intro),
         s_result,
         section_girls_talk(talk_lines),
