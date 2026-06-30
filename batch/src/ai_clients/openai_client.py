@@ -7,8 +7,8 @@ class OpenAIClient:
     def __init__(self):
         self.client = OpenAI(
             api_key=config.OPENAI_STOCK_API_KEY
-        )   
-        self.model = "o4-mini"
+        )
+        self.model = config.TEXT_MODEL
     def execute_chat(self, messages: List[Dict[str, str]]) -> str:
         """
         OpenAIのチャット完了APIを実行する

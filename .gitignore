@@ -17,3 +17,6 @@ batch/Lib/
 *.exe
 *.xls
 *.db
+
+# プレビュースクリプトの生成物
+tests/blog_preview.html

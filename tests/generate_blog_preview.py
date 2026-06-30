@@ -1,12 +1,12 @@
 """
 ブログプレビュー生成スクリプト
 
-DBや予算ガードを使わず、サンプルデータ＋Gemini APIで
+DBや予算ガードを使わず、サンプルデータ＋OpenAI APIで
 実際のブログHTMLを生成して blog_preview.html に出力する。
 
 朝記事（作戦会議）と夜記事（結果発表）の両方を1ファイルに出力する。
 
-GEMINI_STOCK_API_KEY が未設定の場合はAIコメントをプレースホルダーで代替。
+OPENAI_STOCK_API_KEY が未設定の場合はAIコメントをプレースホルダーで代替。
 
 Usage:
     cd tests
@@ -22,32 +22,35 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'batch'))
 from src.core.prompt_loader import PromptLoader
 
 # blog_generator.py と同定義（インポートすると psycopg2 等が連鎖ロードされるため直接定義）
-_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu'}
+# 日曜（6）は前週1位キャラを使うため呼び出し側で解決する
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu', 5: 'ritu'}
 _NARRATOR_TONE = {
     'rei': (
         '鷲見 玲（rei）の口調で書いてください。'
-        '落ち着いた大人女子。敬語ベースだが固くなりすぎない。'
-        '冷静に週の流れや順位を整理しながら、読者を自然に記事へ引き込む語り口。'
-        'ドヤりは控えめに。'
+        '週の始まりや中間整理の担当。冷静で落ち着いている。敬語ベースだが固くなりすぎない。'
+        '前営業日の流れや順位を静かに整理して、読者を自然に記事へ引き込む語り口。'
+        'ドヤりは控えめ。文末は「〜します」「〜確認します」程度の落ち着いた締め方。'
     ),
     'mirai': (
         '桜庭 みらい（mirai）の口調で書いてください。'
-        '明るくポジティブな新社会人。少しくだけた話し言葉でもOK。'
-        '負けていても前を向く、頑張り屋の語り口。'
-        '感情が少し出てよいが、泣かせすぎない。'
+        '週前半・週後半を前向きに進める担当。明るくポジティブ、一生懸命。'
+        '少しくだけた話し言葉でもOK。負けていても「ここから」と前を向く。'
+        '感情が少し出てよいが、泣かせすぎない。文末は「〜しましょう」「〜始めます」くらい。'
     ),
     'ritu': (
         '一ノ瀬 律（ritu）の口調で書いてください。'
-        '金髪ギャル。敬語は使わない。軽くてノリが良い語り口。'
-        '週末前の解放感を少し出してよい。勝ったら喜ぶ、負けても「切り替えよ」くらいのテンション。'
-        'ただし勝負はちゃんと見ている。'
+        '金曜・週末担当。週末前の開放感を少し出してよい。ノリが軽い。敬語は使わない。'
+        '勝ったら喜ぶ、負けても「切り替えよ！週末あるし」くらいの軽さ。'
+        'でも勝負はちゃんと見ている。文末は「〜じゃん？」「〜行くよ！」程度のカジュアルな締め。'
     ),
 }
 
-def get_weekday_narrator(date_str: str) -> str:
+def get_weekday_narrator(date_str: str, sunday_narrator: str = 'rei') -> str:
     from datetime import date as _date
     try:
         d = _date.fromisoformat(date_str)
+        if d.weekday() == 6:
+            return sunday_narrator
         return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
     except Exception:
         return 'rei'
@@ -95,6 +98,9 @@ SAMPLE_CUMULATIVE_MVP = [
 ]
 
 SAMPLE_MORNING_POST_URL = 'https://example.com/2026/06/29/morning-strategy/'
+# 日曜記事のナレーター：本番では前週1位キャラをDBから取得するが、
+# プレビューはサンプルデータの1位キャラを手動で指定する
+SAMPLE_SUNDAY_NARRATOR = SAMPLE_RANKING[0]['analyst_name']  # 現在のサンプルでは ritu
 
 # ---------------------------------------------------------------------------
 # 画像URL設定（未設定 or 空文字の場合は非表示）
@@ -297,6 +303,8 @@ BATTLE_CSS = '''<style>
 .morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
 .night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
 .beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
+.narrator-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.narrator-name{font-size:.88rem;color:#7a6b80;font-weight:600;}
 /* 免責 */
 .disclaimer-box{font-size:.85rem;color:#7a7280;background:#fafafa;border-radius:14px;padding:14px 16px;margin-top:32px;border:1px solid #eee;background-image:none;}
 
@@ -315,39 +323,48 @@ BATTLE_CSS = '''<style>
 </style>'''
 
 # ---------------------------------------------------------------------------
-# Gemini呼び出し
+# OpenAI呼び出し
 # ---------------------------------------------------------------------------
-_gemini_model = None
+_openai_client = None
 
-def _get_gemini():
-    global _gemini_model
-    api_key = os.getenv('GEMINI_STOCK_API_KEY') or os.getenv('GEMINI_API_KEY')
+def _get_openai():
+    global _openai_client
+    api_key = os.getenv('OPENAI_STOCK_API_KEY') or os.getenv('OPENAI_API_KEY')
     if not api_key:
         return None
-    if _gemini_model is None:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel('gemini-2.0-flash')
-    return _gemini_model
+    if _openai_client is None:
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
+
+_TEXT_MODEL = os.getenv('TEXT_MODEL', 'gpt-4.1-mini')
 
 def _ai(system: str, user: str, fallback: str) -> str:
-    model = _get_gemini()
-    if not model:
+    client = _get_openai()
+    if not client:
         return fallback  # キー未設定時はフォールバック文をそのまま使う
     try:
-        response = model.generate_content(f'system: {system}\nuser: {user}')
-        return response.text.strip()
+        response = client.chat.completions.create(
+            model=_TEXT_MODEL,
+            messages=[{'role': 'system', 'content': system},
+                      {'role': 'user', 'content': user}],
+        )
+        return response.choices[0].message.content.strip()
     except Exception:
         return fallback  # エラー時もフォールバック文に切り替え
 
 def _ai_raw(system: str, user: str) -> str:
     """JSON取得用（失敗時はNone）"""
-    model = _get_gemini()
-    if not model:
+    client = _get_openai()
+    if not client:
         return None
     try:
-        response = model.generate_content(f'system: {system}\nuser: {user}')
-        return response.text.strip()
+        response = client.chat.completions.create(
+            model=_TEXT_MODEL,
+            messages=[{'role': 'system', 'content': system},
+                      {'role': 'user', 'content': user}],
+        )
+        return response.choices[0].message.content.strip()
     except Exception:
         return None
 
@@ -632,6 +649,57 @@ def section_result() -> str:
         )
     return html
 
+def generate_ranking_narrative() -> list:
+    """各キャラのランキングコメントをAIで生成する（順位＋今日の結果感情を含む）。"""
+    daily_map = {d['analyst_name']: d for d in SAMPLE_DAILY}
+    ranking_summary = '\n'.join(
+        f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"],{}).get("name_short","")}（'
+        f'今日{"+" if daily_map.get(r["analyst_name"],{}).get("total_profit_loss",0)>=0 else ""}'
+        f'{daily_map.get(r["analyst_name"],{}).get("total_profit_loss",0):,}円）'
+        for i, r in enumerate(SAMPLE_RANKING)
+    )
+    raw = _ai_raw(
+        system=PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
+        user=(
+            f'今日のランキングと結果：\n{ranking_summary}\n\n'
+            f'各キャラクターのランキングコメントを生成してください。\n'
+            f'・順位だけで終わらせず、今日の結果に合わせたキャラの感情を1文で入れてください\n'
+            f'・長くしすぎない（1文以内）\n'
+            f'・キャラの口調に合わせてください\n'
+            f'・コメント本文の先頭にキャラ名（「律：」「玲：」など）を入れないでください（HTML側で表示します）\n'
+            f'・投資助言・断言表現は禁止です\n'
+            f'以下のJSON配列形式で返してください（他の文字は不要）：\n'
+            f'[{{"name":"rei","comment":"..."}},{{"name":"mirai","comment":"..."}},{{"name":"ritu","comment":"..."}}]'
+        ),
+    )
+    if raw:
+        try:
+            m = re.search(r'\[.*?\]', raw, re.DOTALL)
+            if m:
+                parsed = json.loads(m.group())
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    return parsed
+        except Exception:
+            pass
+    # フォールバック: 順位＋今日の感情を含む簡易コメント
+    fallback = []
+    for i, r in enumerate(SAMPLE_RANKING):
+        name = r['analyst_name']
+        profile = ANALYST_PROFILES.get(name, {})
+        short = profile.get('name_short', name)
+        d = daily_map.get(name, {})
+        profit = d.get('total_profit_loss', 0)
+        rank = i + 1
+        if rank == 1:
+            mood = 'ご機嫌' if profit >= 0 else '首位キープも複雑な表情'
+        elif rank == 2:
+            mood = '静かに追走中' if profit >= 0 else '差を意識しながらも落ち着いている'
+        else:
+            mood = '悔しいが明日に気持ちを向けている'
+        fallback.append({'name': name, 'comment': f'{mood}。'})
+    return fallback
+
+
 def section_ranking() -> str:
     html = '<h2>🏆 今月のランキング</h2>\n'
     total = len(SAMPLE_RANKING)
@@ -657,17 +725,21 @@ def section_ranking() -> str:
             f'</div>\n'
         )
 
+    narrative = generate_ranking_narrative()
+    narrative_map = {item['name']: item.get('comment', '') for item in narrative}
     for i, r in enumerate(SAMPLE_RANKING):
         name = r['analyst_name']
         profile = ANALYST_PROFILES[name]
         gap = first_balance - r['current_balance']
         rank = i + 1
-        rank_ctx = f'{total}人中1位です。' if rank == 1 else f'{total}人中{rank}位（差：{gap:,}円）です。'
-        comment = _ai(
-            system=PromptLoader.character_system(name, profile['name_jp']),
-            user=(f'{rank_ctx}順位についてキャラクターらしい一言を1文で。'),
-            fallback=f'{rank}位です。',
-        )
+        comment = narrative_map.get(name, '')
+        if not comment:
+            rank_ctx = f'{total}人中1位です。' if rank == 1 else f'{total}人中{rank}位（差：{gap:,}円）です。'
+            comment = _ai(
+                system=PromptLoader.character_system(name, profile['name_jp']),
+                user=(f'{rank_ctx}順位についてキャラクターらしい一言を1文で。'),
+                fallback=f'{rank}位です。',
+            )
         html += (
             f'<div class="ranking-inline">\n'
             f'  {_avatar_html(name, "56px")}\n'
@@ -756,13 +828,38 @@ def section_morning_three(talk_lines: list) -> str:
     html += '</section>\n'
     return html
 
-def section_result_teaser(trade_date: str) -> str:
-    return (
-        '<div class="result-teaser">'
-        'この勝負の結果は、今夜22時ごろに発表予定です。<br>'
-        'お楽しみに！'
-        '</div>\n'
+def generate_result_teaser(narrator: str = 'rei') -> str:
+    """朝記事末尾の結果予告をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': '今日の勝負の結果は、今夜22時ごろに発表予定です。お楽しみに。',
+        'mirai': '今夜の結果、一緒に待ちましょう！22時ごろに発表します！',
+        'ritu': '今夜の結果は22時ごろ発表するよ〜！どうなるか楽しみじゃん？',
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
+    stocks = [e['stock_name'] for e in SAMPLE_TODAY_ENTRIES]
+    ranking_txt = ', '.join(
+        ANALYST_PROFILES[r['analyst_name']]['name_short'] for r in SAMPLE_RANKING
     )
+    tone = _narrator_tone_hint(narrator)
+    return _ai(
+        PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
+        (
+            f'今日のエントリー銘柄：{", ".join(stocks)}\n'
+            f'現在の順位：{ranking_txt}\n\n'
+            f'朝記事の末尾に置く「今夜の結果予告」の一言を1〜2文で書いてください。\n'
+            f'【口調・語り手の指定】{tone}\n'
+            f'・今夜22時ごろ結果発表予定であることを自然に伝えてください\n'
+            f'・読者が夜も見に来たくなるような軽いひと押しにしてください\n'
+            f'・地の文として書いてください（「玲：」などのセリフ形式は禁止）\n'
+            f'・投資助言や断言表現は禁止です'
+        ),
+        fallback,
+    )
+
+
+def section_result_teaser(text: str, narrator: str = 'rei') -> str:
+    avatar = _narrator_avatar_html(narrator)
+    return f'<div class="result-teaser">{avatar}{text}</div>\n'
 
 def section_morning_link(url: str = None) -> str:
     if not url:
@@ -813,7 +910,7 @@ def generate_morning_beginning(narrator: str = 'rei') -> str:
     """「☕ 今朝のはじまり」の本文をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
     fallback_by_narrator = {
         'rei': (
-            '昨日は律が大きく前に出て、玲は落ち着いて積み上げる展開でした。'
+            '昨日は律さんが大きく前に出て、私は落ち着いて積み上げる展開でした。'
             'みらいは少し悔しい朝かもしれませんが、今朝も3人それぞれの作戦が始まります。'
         ),
         'mirai': (
@@ -866,7 +963,7 @@ def generate_night_beginning(narrator: str = 'rei') -> str:
         'ritu': (
             '今日の勝負終わったよ〜！みんなどうだったんだろ？'
             '結果見る前からなんか空気でわかる気がするんだけどね笑。'
-            'とりあえず今日いちばんやらかした、もとい活躍した子から行くよ！'
+            'とりあえず今日いちばん目立ってた子から行くよ！'
         ),
     }
     fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
@@ -893,19 +990,38 @@ def generate_night_beginning(narrator: str = 'rei') -> str:
     )
 
 
-def section_morning_beginning(text: str) -> str:
+def _narrator_avatar_html(narrator: str) -> str:
+    profile = ANALYST_PROFILES.get(narrator, {})
+    name_jp = profile.get('name_jp', narrator)
+    name_short = profile.get('name_short', narrator)
+    icons = {'rei': '👓', 'mirai': '🌸', 'ritu': '🎲'}
+    icon = icons.get(narrator, '👤')
+    return (
+        f'<div class="narrator-header">'
+        f'<div class="character-avatar placeholder-{narrator}">'
+        f'<span class="avatar-icon">{icon}</span>'
+        f'<span class="avatar-name">{name_short}</span>'
+        f'</div>'
+        f'<span class="narrator-name">{name_jp}</span>'
+        f'</div>\n'
+    )
+
+
+def section_morning_beginning(text: str, narrator: str = 'rei') -> str:
     return (
         '<section class="day-beginning morning-beginning">\n'
         '<h2>☕ 今朝のはじまり</h2>\n'
+        f'{_narrator_avatar_html(narrator)}'
         f'<p class="beginning-text">{text}</p>\n'
         '</section>\n'
     )
 
 
-def section_night_beginning(text: str) -> str:
+def section_night_beginning(text: str, narrator: str = 'rei') -> str:
     return (
         '<section class="day-beginning night-beginning">\n'
         '<h2>🌙 夜のはじまり</h2>\n'
+        f'{_narrator_avatar_html(narrator)}'
         f'<p class="beginning-text">{text}</p>\n'
         '</section>\n'
     )
@@ -915,7 +1031,7 @@ def section_night_beginning(text: str) -> str:
 # HTML組み立て — 朝記事
 # ---------------------------------------------------------------------------
 def build_morning_html() -> str:
-    narrator = get_weekday_narrator(SAMPLE_TRADE_DATE)
+    narrator = get_weekday_narrator(SAMPLE_TRADE_DATE, sunday_narrator=SAMPLE_SUNDAY_NARRATOR)
     print(f'  [朝記事] 今朝のはじまり（ナレーター: {narrator}）...')
     morning_beginning = generate_morning_beginning(narrator)
 
@@ -934,6 +1050,9 @@ def build_morning_html() -> str:
 
     print('  [朝記事] エントリー...')
     s_entry = section_today_entry()
+
+    print(f'  [朝記事] 結果予告（ナレーター: {narrator}）...')
+    result_teaser_text = generate_result_teaser(narrator)
 
     title = f'【AI投資バトル】{SAMPLE_TRADE_DATE} 朝の作戦会議｜{subtitle}'
     hero_html = (
@@ -954,11 +1073,11 @@ def build_morning_html() -> str:
         preview_notice,
         hero_html,
         notice,
-        section_morning_beginning(morning_beginning),
+        section_morning_beginning(morning_beginning, narrator),
         section_strategy_talk(talk_lines),
         s_entry,
         section_morning_three(morning_three),
-        section_result_teaser(SAMPLE_TRADE_DATE),
+        section_result_teaser(result_teaser_text, narrator),
         DISCLAIMER,
         '</div>',
     ])
@@ -967,7 +1086,7 @@ def build_morning_html() -> str:
 # HTML組み立て — 夜記事
 # ---------------------------------------------------------------------------
 def build_evening_html() -> str:
-    narrator = get_weekday_narrator(SAMPLE_DATE)
+    narrator = get_weekday_narrator(SAMPLE_DATE, sunday_narrator=SAMPLE_SUNDAY_NARRATOR)
     print(f'  [夜記事] 夜のはじまり（ナレーター: {narrator}）...')
     night_beginning = generate_night_beginning(narrator)
 
@@ -1013,14 +1132,14 @@ def build_evening_html() -> str:
         section_morning_link(SAMPLE_MORNING_POST_URL),
         hero_html,
         notice,
-        section_night_beginning(night_beginning),
+        section_night_beginning(night_beginning, narrator),
         section_today_hero(hero_char, hero_intro),
         s_result,
         section_girls_talk(talk_lines),
         section_push_points(push_points),
         s_rank,
-        f'<p class="next-hook">{next_hook}</p>',
         s_cum,
+        f'<div class="next-hook">{_narrator_avatar_html(narrator)}{next_hook}</div>',
         DISCLAIMER,
         '</div>',
     ])

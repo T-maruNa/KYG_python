@@ -62,6 +62,37 @@ class TDailyResultManager(DBManager):
                 for r in cursor.fetchall()
             ]
 
+    def get_last_week_top(self, date_str: str) -> str:
+        """
+        指定日の前週（月〜土）で週間損益合計が最大のキャラ名を返す。
+        日曜ナレーター決定用。データなし・同率はランダムで解決する。
+        """
+        import random
+        from datetime import date as _date, timedelta
+        try:
+            d = _date.fromisoformat(date_str)
+            # 前週の月曜〜土曜を算出（日曜=weekday 6 を基準に -6〜-1 日）
+            last_sun = d - timedelta(days=d.weekday() + 1)  # 直前の土曜
+            last_mon = last_sun - timedelta(days=5)          # その週の月曜
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT analyst_name, SUM(total_profit_loss) AS weekly_pl
+                    FROM t_daily_result
+                    WHERE result_date BETWEEN %s AND %s
+                    GROUP BY analyst_name
+                    ORDER BY weekly_pl DESC
+                ''', (str(last_mon), str(last_sun)))
+                rows = cursor.fetchall()
+            if not rows:
+                return random.choice(['rei', 'mirai', 'ritu'])
+            top_pl = rows[0]['weekly_pl']
+            # 同率1位は全員からランダム選択
+            tops = [r['analyst_name'] for r in rows if r['weekly_pl'] == top_pl]
+            return random.choice(tops)
+        except Exception:
+            return random.choice(['rei', 'mirai', 'ritu'])
+
     def exists(self, result_date: str) -> bool:
         with self._get_connection() as conn:
             cursor = conn.cursor()
