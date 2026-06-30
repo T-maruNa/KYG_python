@@ -261,9 +261,7 @@ BATTLE_CSS = '''<style>
 /* 朝/夜のはじまり */
 .day-beginning{border-radius:22px;padding:20px 22px;margin:20px 0;box-shadow:0 6px 18px rgba(80,60,90,.07);background-image:none;}
 .morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
-.morning-beginning h2::before{content:"☕ ";font-style:normal;}
 .night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
-.night-beginning h2::before{content:"🌙 ";font-style:normal;}
 .beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
 /* 免責 */
 .disclaimer-box{font-size:.85rem;color:#7a7280;background:#fafafa;border-radius:14px;padding:14px 16px;margin-top:32px;border:1px solid #eee;background-image:none;}
@@ -301,12 +299,12 @@ def _get_gemini():
 def _ai(system: str, user: str, fallback: str) -> str:
     model = _get_gemini()
     if not model:
-        return f'<em style="color:#bbb;">[AIキー未設定]</em> {fallback}'
+        return fallback  # キー未設定時はフォールバック文をそのまま使う
     try:
         response = model.generate_content(f'system: {system}\nuser: {user}')
         return response.text.strip()
-    except Exception as e:
-        return f'<em style="color:#bbb;">[AIエラー: {e}]</em> {fallback}'
+    except Exception:
+        return fallback  # エラー時もフォールバック文に切り替え
 
 def _ai_raw(system: str, user: str) -> str:
     """JSON取得用（失敗時はNone）"""
@@ -497,10 +495,12 @@ def generate_morning_three() -> list:
     return fallback
 
 def generate_push_points() -> list:
+    # フォールバックは SAMPLE_DAILY の勝敗に合わせた情景描写にしておく
+    # （rei: 2勝1敗 / mirai: 1勝2敗 / ritu: 3勝0敗）
     fallback = [
-        {'name': 'rei',   'point': 'メガネを直しながら、今日のプラスを静かに確認。'},
-        {'name': 'mirai', 'point': '悔しそうにしながらも、明日の巻き返しを口にする。'},
-        {'name': 'ritu',  'point': '今日も全力で喜んだり、しょんぼりしたりの一日。'},
+        {'name': 'rei',   'point': 'メガネを直しながら、静かに今日のプラスを分析ノートへ書き留める。'},
+        {'name': 'mirai', 'point': '悔しそうに唇をとがらせながら、明日の銘柄をスマホで検索している。'},
+        {'name': 'ritu',  'point': '机に身を乗り出して、今日の3勝を全力で喜んでいる。'},
     ]
     summary = '\n'.join(
         f'{ANALYST_PROFILES[d["analyst_name"]]["name_jp"]}: '
@@ -748,7 +748,7 @@ def section_push_points(push_points: list) -> str:
     return html
 
 def section_cumulative() -> str:
-    html = '<h2>これまでのMVP記録</h2>\n'
+    html = '<h2>🏅 MVP記録</h2>\n'
     for i, r in enumerate(SAMPLE_CUMULATIVE_MVP):
         name_jp = ANALYST_PROFILES[r['analyst_name']]['name_jp']
         medal = RANK_MEDAL.get(i + 1, '🏅')
@@ -943,8 +943,8 @@ def build_evening_html() -> str:
         section_today_hero(hero_char, hero_intro),
         s_result,
         section_girls_talk(talk_lines),
-        s_rank,
         section_push_points(push_points),
+        s_rank,
         f'<p class="next-hook">{next_hook}</p>',
         s_cum,
         DISCLAIMER,

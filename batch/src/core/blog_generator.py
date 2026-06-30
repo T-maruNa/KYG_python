@@ -159,9 +159,7 @@ BATTLE_CSS = '''<style>
 /* 朝/夜のはじまり */
 .day-beginning{border-radius:22px;padding:20px 22px;margin:20px 0;box-shadow:0 6px 18px rgba(80,60,90,.07);}
 .morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
-.morning-beginning h2::before{content:"☕ ";font-style:normal;}
 .night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
-.night-beginning h2::before{content:"🌙 ";font-style:normal;}
 .beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
 /* 免責 */
 .disclaimer-box{font-size:.86rem;color:#7a7280;background:#fafafa;border-radius:16px;padding:14px 16px;margin-top:32px;border:1px solid #eee;}
@@ -419,8 +417,8 @@ class BlogGenerator:
             self._section_today_hero(hero_char, daily, image_url=img_hero),
             self._section_result(result_date, daily, [], ranking_by_analyst),
             self._section_girls_talk(girls_talk_lines, daily, image_url=img_night),
-            self._section_ranking(ranking, year_month, narrative=ranking_narrative),
             self._section_push_points(push_points, image_url=img_highlight),
+            self._section_ranking(ranking, year_month, narrative=ranking_narrative),
             f'<p class="next-hook">{next_hook}</p>',
             self._section_cumulative(cumulative_mvp),
             DISCLAIMER,
@@ -782,7 +780,7 @@ class BlogGenerator:
     def _section_cumulative(self, cumulative_mvp: List[Dict]) -> str:
         if not cumulative_mvp:
             return ''
-        html = '<h2>これまでのMVP記録</h2>\n'
+        html = '<h2>🏅 MVP記録</h2>\n'
         for i, r in enumerate(cumulative_mvp):
             name = r['analyst_name']
             profile = ANALYST_PROFILES.get(name, {'name_jp': name})
