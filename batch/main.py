@@ -36,6 +36,10 @@ from src.database.t_stock_predict_manager import TStockPredictManager
 from src.database.t_blog_post_history_manager import TBlogPostHistoryManager
 from src.database.t_investment_history_manager import TInvestmentHistoryManager
 from src.core.ai_budget_guard import AIBudgetGuard
+from src.features.feature_builder import FeatureBuilder
+from src.selection.candidate_filter import CandidateFilter
+from src.selection.candidate_scorer import CandidateScorer
+from src.database.t_candidate_stock_scores_manager import TCandidateStockScoresManager
 
 # ------------------------------------------------------------------
 # 引数パース
@@ -215,30 +219,41 @@ for name, ranges in active_ranges_by_analyst.items():
     print(f'  {name}: {ranges}')
 
 # ------------------------------------------------------------------
-# 5. AI予測
+# 5. 特徴量作成・フィルタリング・スコアリング
 # ------------------------------------------------------------------
-predict_manager = TStockPredictManager()
-if predict_manager.exists_prediction(formatted_trade_date):
-    print(f'予測スキップ: {formatted_trade_date} は生成済み')
+all_active_ranges = sorted(set(
+    r for ranges in active_ranges_by_analyst.values() for r in ranges
+))
+
+scores_manager = TCandidateStockScoresManager()
+if scores_manager.exists(formatted_prev_day):
+    print(f'スコアリングスキップ: {formatted_prev_day} は保存済み')
+    _scored_candidates: list = []
+    _filtered_candidates: list = []
 else:
-    print(f'AI予測実行: {formatted_prev_day} → {formatted_trade_date}')
-    predictor = StockPredictor()
-    predictor.predict(
-        yesterday_date=formatted_prev_day,
-        tomorrow_date=formatted_trade_date,
-        active_ranges_by_analyst=active_ranges_by_analyst,
-        ranking_by_analyst=ranking_by_analyst,
-    )
+    print(f'特徴量作成: {formatted_prev_day}')
+    feature_builder = FeatureBuilder()
+    features = feature_builder.build(formatted_prev_day, all_active_ranges)
+    print(f'  特徴量: {len(features)} 件')
+
+    candidate_filter = CandidateFilter()
+    filtered = candidate_filter.filter(features, all_active_ranges)
+    _filtered_candidates = filtered
+
+    scorer = CandidateScorer()
+    scored = scorer.score_and_rank(filtered)
+
+    scores_manager.upsert_scores(formatted_prev_day, scored)
+    print(f'  スコアリング保存完了: {len(scored)} 件')
+
+    top_per_range = scorer.top_per_range(scored, score_key='common_score')
+    # top_per_range の値を flatten して AI へ渡す候補リストを作る
+    _scored_candidates = [c for items in top_per_range.values() for c in items]
+    for price_range, items in top_per_range.items():
+        print(f'  価格帯 {price_range}: 上位 {len(items)} 件')
 
 # ------------------------------------------------------------------
-# 6. 仮想エントリー登録
-# ------------------------------------------------------------------
-print(f'エントリー登録: {formatted_trade_date}')
-# buy_date = prev_day（前営業日終値で買ったことにする）
-trader.execute_entries(formatted_trade_date, formatted_prev_day, year_month)
-
-# ------------------------------------------------------------------
-# 7. 成績集計
+# 6. 成績集計（ランキング情報は AI 予測プロンプトに必要）
 # ------------------------------------------------------------------
 aggregator = StatsAggregator()
 daily_summary = aggregator.get_daily_summary(formatted_prev_day)
@@ -254,7 +269,6 @@ for i, r in enumerate(ranking, 1):
     diff = r['current_balance'] - r['initial_balance']
     print(f'  {i}位 {r["analyst_name"]}: {r["current_balance"]:,}円 ({diff:+,}円)')
 
-# ランキング情報をアナリスト別に整理（予測・コメントで使用）
 _first_balance = ranking[0]['current_balance'] if ranking else 0
 ranking_by_analyst = {
     r['analyst_name']: {
@@ -265,13 +279,37 @@ ranking_by_analyst = {
     for i, r in enumerate(ranking)
 }
 
+# ------------------------------------------------------------------
+# 7. AI予測（スコアリング済み候補を渡す）
+# ------------------------------------------------------------------
+predict_manager = TStockPredictManager()
+if predict_manager.exists_prediction(formatted_trade_date):
+    print(f'予測スキップ: {formatted_trade_date} は生成済み')
+else:
+    print(f'AI予測実行: {formatted_prev_day} → {formatted_trade_date}')
+    predictor = StockPredictor()
+    predictor.predict(
+        yesterday_date=formatted_prev_day,
+        tomorrow_date=formatted_trade_date,
+        active_ranges_by_analyst=active_ranges_by_analyst,
+        ranking_by_analyst=ranking_by_analyst,
+        scored_candidates=_scored_candidates if _scored_candidates else None,
+    )
+
+# ------------------------------------------------------------------
+# 8. 仮想エントリー登録
+# ------------------------------------------------------------------
+print(f'エントリー登録: {formatted_trade_date}')
+# buy_date = prev_day（前営業日終値で買ったことにする）
+trader.execute_entries(formatted_trade_date, formatted_prev_day, year_month)
+
 # 月末なら月次成績を確定
 if is_last_business_day:
     print(f'\n月次成績確定: {year_month}')
     aggregator.finalize_month(year_month)
 
 # ------------------------------------------------------------------
-# 8. 朝記事生成（朝の作戦会議）
+# 9. 朝記事生成（朝の作戦会議）
 # ------------------------------------------------------------------
 blog_gen = BlogGenerator()
 blog_history = TBlogPostHistoryManager()
@@ -293,7 +331,7 @@ if not blog_history.exists(formatted_today, 'prediction_daily'):
         print(pred_content)
     else:
         # ------------------------------------------------------------------
-        # 9. WordPress投稿（朝記事）
+        # 10. WordPress投稿（朝記事）
         # ------------------------------------------------------------------
         wp = WordPressClient()
         result = wp.post(pred_title, pred_content, formatted_today,
@@ -335,7 +373,7 @@ if is_last_business_day and not blog_history.exists(formatted_today, 'monthly'):
                                     status='scheduled' if monthly_result else 'failed')
 
 # ------------------------------------------------------------------
-# 10. AI予算使用状況を表示
+# 11. AI予算使用状況を表示
 # ------------------------------------------------------------------
 guard = AIBudgetGuard()
 print(f'\n=== AI予算状況 ===')

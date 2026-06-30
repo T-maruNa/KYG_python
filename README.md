@@ -42,6 +42,52 @@ python main.py --mode night --dry-run
 
 Google Gemini は初期運用では使いません。将来のマルチプロバイダー実験用にコードと環境変数の枠だけ残しています（`ENABLE_GOOGLE_PROVIDER=false`）。
 
+## 候補銘柄スコアリング
+
+本プロジェクトでは、AIに全銘柄を直接選ばせるのではなく、Python側で特徴量作成・フィルタリング・スコアリングを行い、価格帯ごとに候補銘柄を絞ったうえでAIへ渡します。
+
+### 処理フロー（朝バッチ）
+
+```
+FeatureBuilder.build()
+  └─ 過去20営業日以上のOHLCデータから21種類の特徴量を計算
+       ↓
+CandidateFilter.filter()
+  └─ 出来高不足・異常値・価格帯不一致を除外
+       ↓
+CandidateScorer.score_and_rank()
+  └─ common_score / rei_score / mirai_score を付与
+       ↓
+top_per_range() で価格帯ごとに上位 MAX_CANDIDATES_PER_RANGE 件へ絞る
+       ↓
+TCandidateStockScoresManager.upsert_scores() でDB保存
+       ↓
+StockPredictor.predict(scored_candidates=...) でAIへ渡す
+```
+
+### スコア体系
+
+| スコア | 対象 | 重視する指標 |
+|---|---|---|
+| `common_score` | 全キャラ共通 | 出来高増加・適度な値動き・短期上昇傾向 |
+| `rei_score` | 鷲見玲（テクニカル重視） | 移動平均乖離・高値更新・連続上昇 |
+| `mirai_score` | 桜庭みらい（話題性重視） | 出来高急増・ギャップアップ・陽線 |
+
+律（一ノ瀬律）はスコアリング対象外。フィルタ通過済み候補からPython側でランダム選定します。
+
+### フィルタ除外基準
+
+| 条件 | 閾値 |
+|---|---|
+| 出来高不足 | 10,000株未満 |
+| 前日比異常 | 絶対値 28% 超（ストップ高/安付近） |
+| 5日騰落率異常 | 絶対値 45% 超 |
+| ボラティリティ不足 | 0.1% 未満（完全に動かない銘柄） |
+
+### DB テーブル
+
+スコアリング結果は `t_candidate_stock_scores` に保存されます（`batch/db/SQL/create_t_candidate_stock_scores.sql`）。
+
 ## 環境変数一覧
 
 `batch/.env.example` をコピーして `batch/.env` を作成し、以下の値を設定してください。
