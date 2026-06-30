@@ -44,6 +44,24 @@ class TDailyResultManager(DBManager):
                 for r in cursor.fetchall()
             ]
 
+    def get_latest(self, before_date: str) -> List[Dict]:
+        """指定日より前の直近営業日の結果を返す。前日データ表示用。"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT analyst_name, total_profit_loss, current_balance, win_count, lose_count
+                FROM t_daily_result
+                WHERE result_date < %s
+                ORDER BY result_date DESC, current_balance DESC
+                LIMIT 3
+            ''', (before_date,))
+            return [
+                {'analyst_name': r['analyst_name'], 'total_profit_loss': r['total_profit_loss'],
+                 'current_balance': r['current_balance'], 'win_count': r['win_count'],
+                 'lose_count': r['lose_count']}
+                for r in cursor.fetchall()
+            ]
+
     def exists(self, result_date: str) -> bool:
         with self._get_connection() as conn:
             cursor = conn.cursor()

@@ -156,6 +156,13 @@ BATTLE_CSS = '''<style>
 /* 累計 */
 .cumulative-card{background:#fff;border-radius:18px;padding:14px 18px;margin:8px 0;box-shadow:0 4px 14px rgba(80,60,90,.06);display:flex;align-items:center;gap:10px;}
 .mvp-count{font-size:.85rem;color:#7a6b80;}
+/* 朝/夜のはじまり */
+.day-beginning{border-radius:22px;padding:20px 22px;margin:20px 0;box-shadow:0 6px 18px rgba(80,60,90,.07);}
+.morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
+.morning-beginning h2::before{content:"☕ ";font-style:normal;}
+.night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
+.night-beginning h2::before{content:"🌙 ";font-style:normal;}
+.beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
 /* 免責 */
 .disclaimer-box{font-size:.86rem;color:#7a7280;background:#fafafa;border-radius:16px;padding:14px 16px;margin-top:32px;border:1px solid #eee;}
 /* 朝記事 */
@@ -266,6 +273,9 @@ class BlogGenerator:
         """朝8時の作戦会議記事を生成する。"""
         ranking = ranking or []
 
+        # 前営業日の結果を取得して朝の導入文に使う（なくても記事生成は続く）
+        prev_daily = self.daily_manager.get_latest(before_date=trade_date)
+
         opening = self._generate_morning_opening(today_entries, ranking)
         subtitle = opening.get('subtitle', '今日の3人のエントリー')
         lead = opening.get('lead', '今日も3人の勝負が始まります。')
@@ -275,6 +285,7 @@ class BlogGenerator:
             {'name': 'ritu',  'line': 'きたきたきた！今日もノリで行くよ！'},
         ])
 
+        morning_beginning = self._generate_morning_beginning(prev_daily, ranking)
         morning_three = self._generate_morning_three(today_entries, ranking)
 
         # 画像生成（失敗しても記事生成は継続）
@@ -310,6 +321,7 @@ class BlogGenerator:
             '<section class="battle-article">',
             hero_html,
             notice,
+            self._section_morning_beginning(morning_beginning),
             self._section_strategy_talk(talk_lines, image_url=img_morning_scene),
             self._section_morning_entry(trade_date, today_entries),
             self._section_morning_three(morning_three, image_url=img_morning_sub),
@@ -351,6 +363,7 @@ class BlogGenerator:
         girls_talk_lines = self._generate_girls_talk(daily, ranking)
         push_points = self._generate_push_points(daily)
         next_hook = self._generate_next_hook(daily, ranking)
+        night_beginning = self._generate_night_beginning(daily, ranking, hero_char)
 
         # 夜記事用 画像生成（失敗しても記事生成は継続）
         # hero_expression は損益率から算出（victory/happy/worried/defeated）し
@@ -402,6 +415,7 @@ class BlogGenerator:
             self._section_morning_link(morning_post_url),
             hero_html,
             notice,
+            self._section_night_beginning(night_beginning),
             self._section_today_hero(hero_char, daily, image_url=img_hero),
             self._section_result(result_date, daily, [], ranking_by_analyst),
             self._section_girls_talk(girls_talk_lines, daily, image_url=img_night),
@@ -483,6 +497,28 @@ class BlogGenerator:
     # ------------------------------------------------------------------
     # 内部セクション — 朝記事
     # ------------------------------------------------------------------
+
+    def _section_morning_beginning(self, text: str) -> str:
+        """朝記事: ☕ 今朝のはじまり（前日の流れ→今朝の空気を作る導入）"""
+        if not text:
+            return ''
+        return (
+            '<section class="day-beginning morning-beginning">\n'
+            '<h2>☕ 今朝のはじまり</h2>\n'
+            f'<p class="beginning-text">{text}</p>\n'
+            '</section>\n'
+        )
+
+    def _section_night_beginning(self, text: str) -> str:
+        """夜記事: 🌙 夜のはじまり（結果発表前に場の空気を作る導入）"""
+        if not text:
+            return ''
+        return (
+            '<section class="day-beginning night-beginning">\n'
+            '<h2>🌙 夜のはじまり</h2>\n'
+            f'<p class="beginning-text">{text}</p>\n'
+            '</section>\n'
+        )
 
     def _section_strategy_talk(self, talk_lines: List[Dict], image_url: str = '') -> str:
         if not talk_lines:
@@ -930,6 +966,55 @@ class BlogGenerator:
             pass
         return fallback
 
+    def _generate_morning_beginning(self, prev_daily: List[Dict], ranking: List[Dict]) -> str:
+        """
+        朝記事「☕ 今朝のはじまり」の本文を生成する。
+        前営業日の結果と現在の順位をもとに、3人の朝の空気を2〜4文で描写する。
+        """
+        fallback = (
+            '今日も3人の朝が始まりました。'
+            'それぞれの作戦を胸に、今日の勝負に向けて準備が整っています。'
+        )
+        if not prev_daily and not ranking:
+            return fallback
+
+        prev_summary = ''
+        if prev_daily:
+            prev_summary = '前営業日の結果：' + '、'.join(
+                f'{ANALYST_PROFILES.get(d["analyst_name"], {}).get("name_short", d["analyst_name"])}'
+                f'が{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円'
+                f'（{d["win_count"]}勝{d["lose_count"]}敗）'
+                for d in prev_daily
+            )
+        ranking_txt = '現在の月間順位：' + '、'.join(
+            f'{i+1}位: {ANALYST_PROFILES.get(r["analyst_name"], {}).get("name_short", r["analyst_name"])}'
+            for i, r in enumerate(ranking)
+        ) if ranking else ''
+
+        try:
+            messages = [
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}'},
+                {'role': 'user', 'content': (
+                    f'{prev_summary}\n{ranking_txt}\n\n'
+                    f'朝記事の「☕ 今朝のはじまり」セクション用の本文を書いてください。\n'
+                    f'前日の流れと今の順位をふまえて、3人の今朝の空気を2〜4文で描写してください。\n'
+                    f'・投資分析ではなく、キャラクターの雰囲気・感情の描写にしてください\n'
+                    f'・「昨日〜から、今朝は〜」という流れで自然につなげてください\n'
+                    f'・文末は「今日の作戦会議へ」という流れで締めてください\n'
+                    f'・地の文として書いてください（セリフ形式や箇条書きは不要）\n'
+                    f'・2〜4文で完結させてください'
+                )},
+            ]
+            raw = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='morning_beginning', model='gemini',
+            )
+            if raw:
+                return raw.strip()
+        except Exception:
+            pass
+        return fallback
+
     # ------------------------------------------------------------------
     # AI生成: 夜記事
     # ------------------------------------------------------------------
@@ -976,6 +1061,54 @@ class BlogGenerator:
                     parsed = json.loads(m.group())
                     if isinstance(parsed, dict) and 'subtitle' in parsed:
                         return parsed
+        except Exception:
+            pass
+        return fallback
+
+    def _generate_night_beginning(self, daily: List[Dict],
+                                  ranking: List[Dict], hero_char: Optional[Dict]) -> str:
+        """
+        夜記事「🌙 夜のはじまり」の本文を生成する。
+        今日の結果と主役情報をもとに、勝負が終わった夜の空気を2〜4文で描写する。
+        """
+        fallback = (
+            '今日の勝負が終わりました。'
+            '3人それぞれが今日の結果を持ち寄って、これから発表です。'
+        )
+        if not daily:
+            return fallback
+
+        summary = '\n'.join(
+            f'{ANALYST_PROFILES.get(d["analyst_name"], {}).get("name_short", d["analyst_name"])}: '
+            f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円 '
+            f'（{d["win_count"]}勝{d["lose_count"]}敗）'
+            for d in daily
+        )
+        hero_txt = ''
+        if hero_char:
+            hero_name = ANALYST_PROFILES.get(hero_char['analyst_name'], {}).get('name_short', hero_char['analyst_name'])
+            hero_txt = f'今日の主役候補: {hero_name}（{hero_char["total_profit_loss"]:+,}円）'
+
+        try:
+            messages = [
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}'},
+                {'role': 'user', 'content': (
+                    f'今日の仮想投資結果：\n{summary}\n{hero_txt}\n\n'
+                    f'夜記事の「🌙 夜のはじまり」セクション用の本文を書いてください。\n'
+                    f'・今日の勝負が終わった直後の3人の空気を2〜4文で描写してください\n'
+                    f'・勝ったキャラの表情・負けたキャラの表情を自然に入れてください\n'
+                    f'・結果の数字はまだ出さず、感情と場の空気を先に見せてください\n'
+                    f'・文末は「まずは今日の主役から」という流れで締めてください\n'
+                    f'・地の文として書いてください（セリフ形式や箇条書きは不要）\n'
+                    f'・2〜4文で完結させてください'
+                )},
+            ]
+            raw = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='night_beginning', model='gemini',
+            )
+            if raw:
+                return raw.strip()
         except Exception:
             pass
         return fallback

@@ -258,6 +258,13 @@ BATTLE_CSS = '''<style>
 .cumulative-card{background:#fff;border-radius:16px;padding:12px 16px;margin:8px 0;box-shadow:0 4px 12px rgba(80,60,90,.06);display:flex;align-items:center;gap:10px;background-image:none;}
 .mvp-count{font-size:.83rem;color:#7a6b80;}
 
+/* 朝/夜のはじまり */
+.day-beginning{border-radius:22px;padding:20px 22px;margin:20px 0;box-shadow:0 6px 18px rgba(80,60,90,.07);background-image:none;}
+.morning-beginning{background:linear-gradient(135deg,#fff9ee,#fff3e0);border:1px solid #f5ddb0;}
+.morning-beginning h2::before{content:"☕ ";font-style:normal;}
+.night-beginning{background:linear-gradient(135deg,#f0f0ff,#e8eaff);border:1px solid #c8c8f0;}
+.night-beginning h2::before{content:"🌙 ";font-style:normal;}
+.beginning-text{color:#4b3b57;line-height:2;margin:.6em 0 0;font-size:.97rem;}
 /* 免責 */
 .disclaimer-box{font-size:.85rem;color:#7a7280;background:#fafafa;border-radius:14px;padding:14px 16px;margin-top:32px;border:1px solid #eee;background-image:none;}
 
@@ -758,10 +765,87 @@ def section_cumulative() -> str:
         )
     return html
 
+def generate_morning_beginning() -> str:
+    """「☕ 今朝のはじまり」の本文をAIで生成。未設定時はフォールバック。"""
+    fallback = (
+        '昨日は律が大きく前に出て、玲は落ち着いて積み上げる展開に。'
+        'みらいはちょっと悔しい朝だけど、今日はまた手帳を開いて作戦会議です。'
+    )
+    prev_summary = '前営業日の結果：' + '、'.join(
+        f'{ANALYST_PROFILES[d["analyst_name"]]["name_short"]}が'
+        f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円'
+        f'（{d["win_count"]}勝{d["lose_count"]}敗）'
+        for d in SAMPLE_DAILY
+    )
+    ranking_txt = '現在の月間順位：' + '、'.join(
+        f'{i+1}位: {ANALYST_PROFILES[r["analyst_name"]]["name_short"]}'
+        for i, r in enumerate(SAMPLE_RANKING)
+    )
+    return _ai(
+        PromptLoader.base_system(),
+        (
+            f'{prev_summary}\n{ranking_txt}\n\n'
+            f'朝記事「☕ 今朝のはじまり」の本文を2〜4文で書いてください。\n'
+            f'前日の流れと今の順位をふまえた3人の今朝の空気を描写し、文末は今日の作戦会議へつなげてください。\n'
+            f'地の文のみ（セリフ・箇条書き不要）。'
+        ),
+        fallback,
+    )
+
+
+def generate_night_beginning() -> str:
+    """「🌙 夜のはじまり」の本文をAIで生成。未設定時はフォールバック。"""
+    fallback = (
+        '今日の勝負が終わって、3人はそれぞれの結果を持ち寄りました。'
+        '大きく笑う子もいれば、少し悔しそうに手帳を握る子もいます。'
+        'まずは、今日いちばん空気を動かした主役から見ていきます。'
+    )
+    hero_char = max(SAMPLE_DAILY, key=lambda d: abs(d['total_profit_loss']))
+    summary = '\n'.join(
+        f'{ANALYST_PROFILES[d["analyst_name"]]["name_short"]}: '
+        f'{"+" if d["total_profit_loss"] >= 0 else ""}{d["total_profit_loss"]:,}円 '
+        f'（{d["win_count"]}勝{d["lose_count"]}敗）'
+        for d in SAMPLE_DAILY
+    )
+    hero_name = ANALYST_PROFILES[hero_char['analyst_name']]['name_short']
+    return _ai(
+        PromptLoader.base_system(),
+        (
+            f'今日の仮想投資結果：\n{summary}\n今日の主役候補: {hero_name}\n\n'
+            f'夜記事「🌙 夜のはじまり」の本文を2〜4文で書いてください。\n'
+            f'結果の数字はまだ出さず、勝負が終わった直後の3人の空気・表情を描写し、'
+            f'文末は「まずは今日の主役から」でつなげてください。\n'
+            f'地の文のみ（セリフ・箇条書き不要）。'
+        ),
+        fallback,
+    )
+
+
+def section_morning_beginning(text: str) -> str:
+    return (
+        '<section class="day-beginning morning-beginning">\n'
+        '<h2>☕ 今朝のはじまり</h2>\n'
+        f'<p class="beginning-text">{text}</p>\n'
+        '</section>\n'
+    )
+
+
+def section_night_beginning(text: str) -> str:
+    return (
+        '<section class="day-beginning night-beginning">\n'
+        '<h2>🌙 夜のはじまり</h2>\n'
+        f'<p class="beginning-text">{text}</p>\n'
+        '</section>\n'
+    )
+
+
 # ---------------------------------------------------------------------------
 # HTML組み立て — 朝記事
 # ---------------------------------------------------------------------------
 def build_morning_html() -> str:
+    print('  [朝記事] 今朝のはじまり...')
+    morning_beginning = generate_morning_beginning()
+
     print('  [朝記事] オープニング生成中...')
     opening = generate_morning_opening()
     subtitle = opening.get('subtitle', '今日の3人のエントリー')
@@ -797,6 +881,7 @@ def build_morning_html() -> str:
         preview_notice,
         hero_html,
         notice,
+        section_morning_beginning(morning_beginning),
         section_strategy_talk(talk_lines),
         s_entry,
         section_morning_three(morning_three),
@@ -809,6 +894,9 @@ def build_morning_html() -> str:
 # HTML組み立て — 夜記事
 # ---------------------------------------------------------------------------
 def build_evening_html() -> str:
+    print('  [夜記事] 夜のはじまり...')
+    night_beginning = generate_night_beginning()
+
     print('  [夜記事] リード文...')
     lead = generate_lead()
 
@@ -851,6 +939,7 @@ def build_evening_html() -> str:
         section_morning_link(SAMPLE_MORNING_POST_URL),
         hero_html,
         notice,
+        section_night_beginning(night_beginning),
         section_today_hero(hero_char, hero_intro),
         s_result,
         section_girls_talk(talk_lines),
