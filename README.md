@@ -93,6 +93,60 @@ Google Gemini は初期運用では使いません。将来のマルチプロバ
 | `AI_RETRY_LIMIT` | `2` | API失敗時の最大リトライ回数 |
 | `ESTIMATED_COST_PER_CALL_JPY` | `30` | AI呼び出し1回あたりの推定コスト（円）。月次予算チェックに使用 |
 
+### 画像アセット参照
+
+| 変数名 | デフォルト | 説明 |
+|---|---|---|
+| `ASSET_BASE_URL` | `''`（空） | 本番画像のベースURL。未設定時は `assets/` 配下を参照（後述） |
+
+開発中は Git に置いた `assets/` 配下の画像を参照します。
+本番では `ASSET_BASE_URL` に WordPress メディアライブラリ等の URL を設定することで、本番画像 URL へ自動で切り替わります。
+
+```
+# 開発時（未設定）
+assets/characters/rei/normal.png  ← Git 管理のローカルファイル
+
+# 本番時（ASSET_BASE_URL=https://example.com/wp-content/uploads）
+https://example.com/wp-content/uploads/characters/rei/normal.png
+```
+
+画像アセットのディレクトリ構成:
+
+```
+assets/
+  characters/
+    rei/   base.png, normal.png, happy.png, victory.png, smug.png, worried.png, defeated.png
+    mirai/ 同上
+    ritu/  同上
+  scenes/
+    morning_meeting_default.png   # 朝の作戦会議フォールバック
+    morning_sub_default.png
+    night_reflection_default.png  # 夜の反省会フォールバック
+    highlight_default.png         # 今日の名場面フォールバック
+    hero_default_rei.png          # 主役フォールバック（キャラ別）
+    hero_default_mirai.png
+    hero_default_ritu.png
+    monthly_mvp_default.png       # 月間MVP記事フォールバック
+  site/
+    logo.png, favicon.png, ogp.png, key_visual.png
+```
+
+> **注意**: batch サーバー（Render 等）を本番画像の永続保存先として使わないでください。
+> 固定画像は WordPress メディアライブラリにアップロードし、`ASSET_BASE_URL` で参照してください。
+> Git 内の `assets/` は開発確認・素材管理・バックアップ用です。
+
+### 個別キャラクター固定画像URL（後方互換）
+
+`ASSET_BASE_URL` より優先される個別指定です。通常は `ASSET_BASE_URL` に寄せて空のままにしてください。
+
+| 変数名 | 説明 |
+|---|---|
+| `IMG_REI` | 鷲見 玲の固定画像URL（設定時は ASSET_BASE_URL より優先） |
+| `IMG_MIRAI` | 桜庭 みらいの固定画像URL |
+| `IMG_RITU` | 一ノ瀬 律の固定画像URL |
+| `IMG_MORNING_SCENE` | 朝シーン固定URL（後方互換） |
+| `IMG_EVENING_SCENE` | 夜シーン固定URL（後方互換） |
+
 ### 画像生成
 
 | 変数名 | デフォルト | 説明 |
@@ -107,18 +161,6 @@ Google Gemini は初期運用では使いません。将来のマルチプロバ
 | `ENABLE_HERO_SCENE_IMAGE` | `true` | 今日の主役画像 |
 | `ENABLE_NIGHT_REFLECTION_SCENE` | `true` | 夜の反省会シーン画像 |
 | `ENABLE_HIGHLIGHT_SCENE_IMAGE` | `true` | 今日の名場面挿絵 |
-
-### キャラクター固定フォールバック画像
-
-画像自動生成が無効またはAPI失敗時に表示する固定画像のURL。未設定の場合はプレースホルダーを表示。
-
-| 変数名 | 説明 |
-|---|---|
-| `IMG_REI` | 鷲見 玲の固定画像URL |
-| `IMG_MIRAI` | 桜庭 みらいの固定画像URL |
-| `IMG_RITU` | 一ノ瀬 律の固定画像URL |
-| `IMG_MORNING_SCENE` | 朝の作戦会議 固定フォールバック画像URL |
-| `IMG_EVENING_SCENE` | 夜の反省会 固定フォールバック画像URL |
 
 ### その他
 

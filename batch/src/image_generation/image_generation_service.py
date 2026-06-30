@@ -7,46 +7,17 @@
 
 フォールバック順序:
     1. OpenAI API で生成した URL
-    2. assets/scenes/ 配下の固定画像（手動配置）
+    2. AssetResolver 経由の固定シーン画像（assets/scenes/ 配下またはASSSET_BASE_URL）
     3. None → blog_generator 側で HTML プレースホルダーに変換
 """
 import os
 from typing import Optional, Dict
 from config.config import config
 from .base_provider import BaseImageProvider
+from src.core.asset_resolver import AssetResolver
 from src.database.t_generated_images_manager import TGeneratedImagesManager
 
-# batch/assets/ を絶対パスで解決する
-# このファイルは batch/src/image_generation/ にあるので4階層上がる
-ASSETS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-    'assets',
-)
-
-
-def _char_asset(character: str, variant: str) -> str:
-    """キャラクター別固定アセットのパスを返す（例: assets/characters/rei/base.png）"""
-    return os.path.join(ASSETS_DIR, 'characters', character, f'{variant}.png')
-
-
-def _scene_fallback(image_type: str, character_key: Optional[str] = None) -> Optional[str]:
-    """
-    API 生成失敗時の固定画像フォールバック。
-    ファイルが存在しない場合は None を返し、呼び出し側でプレースホルダーへ変換する。
-    """
-    fallbacks = {
-        'morning_scene':          os.path.join(ASSETS_DIR, 'scenes', 'morning_meeting_default.png'),
-        'morning_sub_scene':      os.path.join(ASSETS_DIR, 'scenes', 'morning_sub_default.png'),
-        'night_reflection_scene': os.path.join(ASSETS_DIR, 'scenes', 'night_reflection_default.png'),
-        'highlight_scene':        os.path.join(ASSETS_DIR, 'scenes', 'highlight_default.png'),
-    }
-    # 今日の主役はキャラ固有の normal 表情画像を使う
-    if image_type == 'hero_scene' and character_key:
-        path = _char_asset(character_key, 'normal')
-        return path if os.path.exists(path) else None
-
-    path = fallbacks.get(image_type)
-    return path if path and os.path.exists(path) else None
+_resolver = AssetResolver()
 
 
 class ImageGenerationService:
@@ -68,16 +39,16 @@ class ImageGenerationService:
 
     def _reference_images(self, characters: list) -> list:
         """
-        指定キャラの base.png / reference_sheet.png を返す。
-        これを OpenAI images.edit に渡すことでキャラの外見を維持した生成ができる。
+        指定キャラの base.png / reference_sheet.png の絶対パスを返す。
+        OpenAI images.edit に渡すためローカルファイルが必要（URLは不可）。
         ファイルが存在しない場合は空リストになり、通常の generate に切り替わる。
         """
         refs = []
         for char in characters:
-            base = _char_asset(char, 'base')
+            base = _resolver.character_abs(char, 'base.png')
             if os.path.exists(base):
                 refs.append(base)
-            ref_sheet = _char_asset(char, 'reference_sheet')
+            ref_sheet = _resolver.character_abs(char, 'reference_sheet.png')
             if os.path.exists(ref_sheet):
                 refs.append(ref_sheet)
         return refs
@@ -138,7 +109,8 @@ class ImageGenerationService:
         """生成 URL がなければ固定アセットにフォールバック。それもなければ None。"""
         if url:
             return url
-        return _scene_fallback(image_type, character_key)
+        result = _resolver.scene_fallback(image_type, character_key or '')
+        return result or None
 
     # ------------------------------------------------------------------
     # 朝記事用

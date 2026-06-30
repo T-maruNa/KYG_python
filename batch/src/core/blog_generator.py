@@ -16,6 +16,7 @@ from src.database.t_character_asset_manager import TCharacterAssetManager
 from src.core.stats_aggregator import StatsAggregator
 from src.ai_clients.openai_client import OpenAIClient
 from src.core.ai_budget_guard import AIBudgetGuard
+from src.core.asset_resolver import AssetResolver
 from src.core.prompt_loader import PromptLoader
 from config.config import config
 
@@ -55,9 +56,11 @@ ANALYST_PROFILES = {
     },
 }
 
-# キャラごとの固定フォールバック画像URL（.env の IMG_REI 等で設定）
-# 自動生成が無効またはAPI失敗時に使われる
-CHAR_IMAGES = {
+# モジュールレベルのアセットリゾルバー
+_resolver = AssetResolver()
+
+# 個別キャラenv（IMG_REI 等）が設定されていればそれを優先する後方互換ヘルパー
+_CHAR_INDIVIDUAL_URLS = {
     'rei':   lambda: config.IMG_REI,
     'mirai': lambda: config.IMG_MIRAI,
     'ritu':  lambda: config.IMG_RITU,
@@ -90,8 +93,8 @@ def _narrator_avatar_html(narrator: str) -> str:
     profile = ANALYST_PROFILES.get(narrator, {})
     name_jp = profile.get('name_jp', narrator)
     name_short = profile.get('name_short', narrator)
-    # キャラ固定画像があれば使う（CHAR_IMAGES は各キャラの base.png URL）
-    img_url = CHAR_IMAGES.get(narrator, '')
+    individual = _CHAR_INDIVIDUAL_URLS.get(narrator, lambda: '')()
+    img_url = _resolver.character_expression(narrator, 'base', individual_url=individual)
     if img_url:
         avatar_inner = f'<img src="{img_url}" alt="{name_short}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
     else:
@@ -220,8 +223,6 @@ BATTLE_CSS = '''<style>
 }
 </style>'''
 
-_ASSET_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), '..', 'assets', 'characters')
 
 _RANK_BADGE_CLASS = {1: 'rank-badge-1', 2: 'rank-badge-2', 3: 'rank-badge-3'}
 _RANK_MEDAL = {1: '🥇', 2: '🥈', 3: '🥉'}
@@ -275,22 +276,17 @@ def _narrator_tone_hint(narrator: str) -> str:
 
 
 def _image_url(analyst_name: str, expression: str) -> str:
-    variant = os.path.join(_ASSET_BASE, analyst_name, f'{expression}.png')
-    if os.path.exists(variant):
-        return f'assets/characters/{analyst_name}/{expression}.png'
-    return f'assets/characters/{analyst_name}.png'
+    individual = _CHAR_INDIVIDUAL_URLS.get(analyst_name, lambda: '')()
+    return _resolver.character_expression(analyst_name, expression, individual_url=individual)
 
 
 def _avatar_html(analyst_name: str, expression: str, size: str = '') -> str:
     style = f' style="width:{size};height:{size};"' if size else ''
-    img_path = _image_url(analyst_name, expression)
     profile = ANALYST_PROFILES.get(analyst_name, {'name_jp': analyst_name})
-    variant = os.path.join(_ASSET_BASE, analyst_name, f'{expression}.png')
-    base = os.path.join(_ASSET_BASE, f'{analyst_name}.png')
-    has_image = os.path.exists(variant) or os.path.exists(base)
+    img_path = _image_url(analyst_name, expression)
     inner = (
         f'<img src="{img_path}" alt="{profile["name_jp"]}">'
-        if has_image else
+        if img_path else
         f'<div class="character-avatar-placeholder">🖼️<br>{profile["name_jp"]}<br>'
         f'<span style="font-size:.6rem;">※結果により変動</span></div>'
     )
@@ -704,7 +700,8 @@ class BlogGenerator:
 
         intro = self._generate_hero_intro(name, profile['personality'], profit, win, lose)
 
-        hero_img_url = image_url or CHAR_IMAGES.get(name, lambda: '')()
+        individual = _CHAR_INDIVIDUAL_URLS.get(name, lambda: '')()
+        hero_img_url = image_url or _resolver.character_expression(name, 'base', individual_url=individual)
         hero_img = _scene_image_html(hero_img_url, f'{profile["name_short"]}', 'scene-image hero-image', 'hero_scene')
         return (
             f'<section class="today-hero character-{name}">\n'

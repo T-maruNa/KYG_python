@@ -39,12 +39,17 @@ class Config:
     # AI呼び出し1回あたりの推定コスト（円）— 超えたら月次予算チェックに使う
     ESTIMATED_COST_PER_CALL_JPY = float(os.getenv('ESTIMATED_COST_PER_CALL_JPY', '30'))
 
-    # キャラクター固定画像URL（未設定の場合はプレースホルダー）
-    IMG_MORNING_SCENE = os.getenv('IMG_MORNING_SCENE', '')  # 朝の作戦会議 固定フォールバック画像
-    IMG_EVENING_SCENE = os.getenv('IMG_EVENING_SCENE', '')  # 夜の反省会 固定フォールバック画像
-    IMG_REI   = os.getenv('IMG_REI', '')                    # 玲の固定フォールバック画像
-    IMG_MIRAI = os.getenv('IMG_MIRAI', '')                  # みらいの固定フォールバック画像
-    IMG_RITU  = os.getenv('IMG_RITU', '')                   # 律の固定フォールバック画像
+    # 画像アセットの本番ベースURL
+    # 設定時: {ASSET_BASE_URL}/characters/rei/normal.png のようにURLを組み立てる
+    # 未設定: プロジェクトルートの assets/ 配下を相対パスで参照する（開発・プレビュー用）
+    ASSET_BASE_URL = os.getenv('ASSET_BASE_URL', '')
+
+    # 個別キャラクター固定画像URL（ASSET_BASE_URL より優先。後方互換用）
+    IMG_REI   = os.getenv('IMG_REI', '')
+    IMG_MIRAI = os.getenv('IMG_MIRAI', '')
+    IMG_RITU  = os.getenv('IMG_RITU', '')
+    IMG_MORNING_SCENE = os.getenv('IMG_MORNING_SCENE', '')  # 後方互換。ASSET_BASE_URL 推奨
+    IMG_EVENING_SCENE = os.getenv('IMG_EVENING_SCENE', '')  # 後方互換。ASSET_BASE_URL 推奨
 
     # 画像生成プロバイダー設定
     IMAGE_PROVIDER = os.getenv('IMAGE_PROVIDER', 'openai')
