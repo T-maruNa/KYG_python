@@ -358,6 +358,7 @@ class BlogGenerator:
 
         morning_beginning = self._generate_morning_beginning(prev_daily, ranking, narrator)
         morning_three = self._generate_morning_three(today_entries, ranking)
+        result_teaser = self._generate_result_teaser(today_entries, ranking, narrator)
 
         # 画像生成（失敗しても記事生成は継続）
         # URL が空文字のまま渡されると _scene_image_html がプレースホルダーに変換する
@@ -396,7 +397,7 @@ class BlogGenerator:
             self._section_strategy_talk(talk_lines, image_url=img_morning_scene),
             self._section_morning_entry(trade_date, today_entries),
             self._section_morning_three(morning_three, image_url=img_morning_sub),
-            self._section_result_teaser(trade_date, narrator),
+            self._section_result_teaser(result_teaser, narrator),
             DISCLAIMER,
             '</section>',
         ]
@@ -633,14 +634,9 @@ class BlogGenerator:
         html += '</section>\n'
         return html
 
-    def _section_result_teaser(self, trade_date: str, narrator: str = 'rei') -> str:
+    def _section_result_teaser(self, text: str, narrator: str = 'rei') -> str:
         avatar = _narrator_avatar_html(narrator)
-        return (
-            f'<div class="result-teaser">{avatar}'
-            'この勝負の結果は、今夜22時ごろに発表予定です。<br>'
-            'お楽しみに！'
-            '</div>\n'
-        )
+        return f'<div class="result-teaser">{avatar}{text}</div>\n'
 
     def _section_next_hook(self, text: str, narrator: str = 'rei') -> str:
         avatar = _narrator_avatar_html(narrator)
@@ -1419,6 +1415,46 @@ class BlogGenerator:
                 self.gemini.execute_chat, messages, call_type='next_hook', model='gemini',
             )
             return result.strip() if result else f'明日は{last}が巻き返すのか、{first}がこのまま走るのか。次回もゆるく見守ってください。'
+        except Exception:
+            return fallback
+
+    def _generate_result_teaser(self, today_entries: List[Dict], ranking: List[Dict],
+                               narrator: str = 'rei') -> str:
+        """
+        朝記事末尾「今夜の結果発表を予告する一言」を曜日担当ナレーターの口調で生成する。
+        地の文形式（セリフ欄ではない）。
+        """
+        fallback_by_narrator = {
+            'rei': '今日の勝負の結果は、今夜22時ごろに発表予定です。お楽しみに。',
+            'mirai': '今夜の結果、一緒に待ちましょう！22時ごろに発表します！',
+            'ritu': '今夜の結果は22時ごろ発表するよ〜！どうなるか楽しみじゃん？',
+        }
+        fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
+        stocks = [e['stock_name'] for e in today_entries] if today_entries else []
+        ranking_txt = ', '.join(
+            ANALYST_PROFILES.get(r['analyst_name'], {}).get('name_short', '')
+            for r in ranking
+        ) if ranking else ''
+        tone = _narrator_tone_hint(narrator)
+        try:
+            messages = [
+                {'role': 'system', 'content': PromptLoader.base_system()
+                    + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}'},
+                {'role': 'user', 'content': (
+                    f'今日のエントリー銘柄：{", ".join(stocks)}\n'
+                    f'現在の順位：{ranking_txt}\n\n'
+                    f'朝記事の末尾に置く「今夜の結果予告」の一言を1〜2文で書いてください。\n'
+                    f'【口調・語り手の指定】{tone}\n'
+                    f'・今夜22時ごろ結果発表予定であることを自然に伝えてください\n'
+                    f'・読者が夜も見に来たくなるような軽いひと押しにしてください\n'
+                    f'・地の文として書いてください（「玲：」などのセリフ形式は禁止）\n'
+                    f'・投資助言や断言表現は禁止です'
+                )},
+            ]
+            result = self.guard.execute(
+                self.gemini.execute_chat, messages, call_type='result_teaser', model='gemini',
+            )
+            return result.strip() if result else fallback
         except Exception:
             return fallback
 

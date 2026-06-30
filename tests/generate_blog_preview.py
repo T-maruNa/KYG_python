@@ -758,14 +758,38 @@ def section_morning_three(talk_lines: list) -> str:
     html += '</section>\n'
     return html
 
-def section_result_teaser(trade_date: str, narrator: str = 'rei') -> str:
-    avatar = _narrator_avatar_html(narrator)
-    return (
-        f'<div class="result-teaser">{avatar}'
-        'この勝負の結果は、今夜22時ごろに発表予定です。<br>'
-        'お楽しみに！'
-        '</div>\n'
+def generate_result_teaser(narrator: str = 'rei') -> str:
+    """朝記事末尾の結果予告をAIで生成。曜日担当ナレーターの口調で地の文として書く。"""
+    fallback_by_narrator = {
+        'rei': '今日の勝負の結果は、今夜22時ごろに発表予定です。お楽しみに。',
+        'mirai': '今夜の結果、一緒に待ちましょう！22時ごろに発表します！',
+        'ritu': '今夜の結果は22時ごろ発表するよ〜！どうなるか楽しみじゃん？',
+    }
+    fallback = fallback_by_narrator.get(narrator, fallback_by_narrator['rei'])
+    stocks = [e['stock_name'] for e in SAMPLE_TODAY_ENTRIES]
+    ranking_txt = ', '.join(
+        ANALYST_PROFILES[r['analyst_name']]['name_short'] for r in SAMPLE_RANKING
     )
+    tone = _narrator_tone_hint(narrator)
+    return _ai(
+        PromptLoader.base_system() + f'\n\n## キャラクタープロファイル\n\n{PromptLoader.character_profile()}',
+        (
+            f'今日のエントリー銘柄：{", ".join(stocks)}\n'
+            f'現在の順位：{ranking_txt}\n\n'
+            f'朝記事の末尾に置く「今夜の結果予告」の一言を1〜2文で書いてください。\n'
+            f'【口調・語り手の指定】{tone}\n'
+            f'・今夜22時ごろ結果発表予定であることを自然に伝えてください\n'
+            f'・読者が夜も見に来たくなるような軽いひと押しにしてください\n'
+            f'・地の文として書いてください（「玲：」などのセリフ形式は禁止）\n'
+            f'・投資助言や断言表現は禁止です'
+        ),
+        fallback,
+    )
+
+
+def section_result_teaser(text: str, narrator: str = 'rei') -> str:
+    avatar = _narrator_avatar_html(narrator)
+    return f'<div class="result-teaser">{avatar}{text}</div>\n'
 
 def section_morning_link(url: str = None) -> str:
     if not url:
@@ -957,6 +981,9 @@ def build_morning_html() -> str:
     print('  [朝記事] エントリー...')
     s_entry = section_today_entry()
 
+    print(f'  [朝記事] 結果予告（ナレーター: {narrator}）...')
+    result_teaser_text = generate_result_teaser(narrator)
+
     title = f'【AI投資バトル】{SAMPLE_TRADE_DATE} 朝の作戦会議｜{subtitle}'
     hero_html = (
         f'<div class="battle-hero">'
@@ -980,7 +1007,7 @@ def build_morning_html() -> str:
         section_strategy_talk(talk_lines),
         s_entry,
         section_morning_three(morning_three),
-        section_result_teaser(SAMPLE_TRADE_DATE, narrator),
+        section_result_teaser(result_teaser_text, narrator),
         DISCLAIMER,
         '</div>',
     ])
