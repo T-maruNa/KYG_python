@@ -20,7 +20,40 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'batch'))
 
 from src.core.prompt_loader import PromptLoader
-from src.core.blog_generator import get_weekday_narrator, _narrator_tone_hint
+
+# blog_generator.py と同定義（インポートすると psycopg2 等が連鎖ロードされるため直接定義）
+_WEEKDAY_NARRATOR = {0: 'rei', 1: 'mirai', 2: 'rei', 3: 'mirai', 4: 'ritu'}
+_NARRATOR_TONE = {
+    'rei': (
+        '鷲見 玲（rei）の口調で書いてください。'
+        '落ち着いた大人女子。敬語ベースだが固くなりすぎない。'
+        '冷静に週の流れや順位を整理しながら、読者を自然に記事へ引き込む語り口。'
+        'ドヤりは控えめに。'
+    ),
+    'mirai': (
+        '桜庭 みらい（mirai）の口調で書いてください。'
+        '明るくポジティブな新社会人。少しくだけた話し言葉でもOK。'
+        '負けていても前を向く、頑張り屋の語り口。'
+        '感情が少し出てよいが、泣かせすぎない。'
+    ),
+    'ritu': (
+        '一ノ瀬 律（ritu）の口調で書いてください。'
+        '金髪ギャル。敬語は使わない。軽くてノリが良い語り口。'
+        '週末前の解放感を少し出してよい。勝ったら喜ぶ、負けても「切り替えよ」くらいのテンション。'
+        'ただし勝負はちゃんと見ている。'
+    ),
+}
+
+def get_weekday_narrator(date_str: str) -> str:
+    from datetime import date as _date
+    try:
+        d = _date.fromisoformat(date_str)
+        return _WEEKDAY_NARRATOR.get(d.weekday(), 'rei')
+    except Exception:
+        return 'rei'
+
+def _narrator_tone_hint(narrator: str) -> str:
+    return _NARRATOR_TONE.get(narrator, _NARRATOR_TONE['rei'])
 
 # ---------------------------------------------------------------------------
 # サンプルデータ
