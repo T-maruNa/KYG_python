@@ -2,6 +2,12 @@ import json
 import os
 import re
 from typing import List, Dict, Optional, Tuple
+try:
+    from src.image_generation.image_generation_service import ImageGenerationService
+    _IMAGE_GENERATION_AVAILABLE = True
+except Exception:
+    _IMAGE_GENERATION_AVAILABLE = False
+
 from src.database.t_daily_result_manager import TDailyResultManager
 from src.database.t_investment_history_manager import TInvestmentHistoryManager
 from src.database.t_monthly_result_manager import TMonthlyResultManager
@@ -233,6 +239,13 @@ class BlogGenerator:
         self.stats = StatsAggregator()
         self.gemini = GeminiClient()
         self.guard = AIBudgetGuard()
+        if _IMAGE_GENERATION_AVAILABLE:
+            try:
+                self.image_service = ImageGenerationService()
+            except Exception:
+                self.image_service = None
+        else:
+            self.image_service = None
 
     # ------------------------------------------------------------------
     # 朝記事
@@ -254,6 +267,19 @@ class BlogGenerator:
 
         morning_three = self._generate_morning_three(today_entries, ranking)
 
+        # 画像生成（失敗しても記事生成は継続）
+        img_morning_scene = ''
+        img_morning_sub = ''
+        if self.image_service:
+            try:
+                img_morning_scene = self.image_service.generate_morning_scene(trade_date, {}) or ''
+            except Exception as e:
+                print(f'[BlogGenerator] morning_scene 生成失敗: {e}')
+            try:
+                img_morning_sub = self.image_service.generate_morning_sub_scene(trade_date, {}) or ''
+            except Exception as e:
+                print(f'[BlogGenerator] morning_sub_scene 生成失敗: {e}')
+
         title = f'【AI投資バトル】{trade_date} 朝の作戦会議｜{subtitle}'
 
         hero_html = (
@@ -273,9 +299,9 @@ class BlogGenerator:
             '<section class="battle-article">',
             hero_html,
             notice,
-            self._section_strategy_talk(talk_lines),
+            self._section_strategy_talk(talk_lines, image_url=img_morning_scene),
             self._section_morning_entry(trade_date, today_entries),
-            self._section_morning_three(morning_three),
+            self._section_morning_three(morning_three, image_url=img_morning_sub),
             self._section_result_teaser(trade_date),
             DISCLAIMER,
             '</section>',
@@ -315,6 +341,31 @@ class BlogGenerator:
         push_points = self._generate_push_points(daily)
         next_hook = self._generate_next_hook(daily, ranking)
 
+        # 画像生成（失敗しても記事生成は継続）
+        img_hero = ''
+        img_night = ''
+        img_highlight = ''
+        if self.image_service:
+            try:
+                if hero_char:
+                    hero_name = hero_char['analyst_name']
+                    hero_profit = hero_char['total_profit_loss']
+                    hero_expression = get_expression(hero_profit)
+                    img_hero = self.image_service.generate_hero_scene(
+                        result_date, hero_name, hero_expression, {}
+                    ) or ''
+            except Exception as e:
+                print(f'[BlogGenerator] hero_scene 生成失敗: {e}')
+            try:
+                img_night = self.image_service.generate_night_reflection_scene(result_date, {}) or ''
+            except Exception as e:
+                print(f'[BlogGenerator] night_reflection_scene 生成失敗: {e}')
+            try:
+                highlight_desc = push_points[0].get('point', '') if push_points else ''
+                img_highlight = self.image_service.generate_highlight_scene(result_date, highlight_desc) or ''
+            except Exception as e:
+                print(f'[BlogGenerator] highlight_scene 生成失敗: {e}')
+
         title = f'【AI投資バトル】{result_date} 結果発表｜{drama_subtitle}'
 
         hero_html = (
@@ -337,11 +388,11 @@ class BlogGenerator:
             self._section_morning_link(morning_post_url),
             hero_html,
             notice,
-            self._section_today_hero(hero_char, daily),
+            self._section_today_hero(hero_char, daily, image_url=img_hero),
             self._section_result(result_date, daily, [], ranking_by_analyst),
-            self._section_girls_talk(girls_talk_lines, daily),
+            self._section_girls_talk(girls_talk_lines, daily, image_url=img_night),
             self._section_ranking(ranking, year_month, narrative=ranking_narrative),
-            self._section_push_points(push_points),
+            self._section_push_points(push_points, image_url=img_highlight),
             f'<p class="next-hook">{next_hook}</p>',
             self._section_cumulative(cumulative_mvp),
             DISCLAIMER,
@@ -419,14 +470,14 @@ class BlogGenerator:
     # 内部セクション — 朝記事
     # ------------------------------------------------------------------
 
-    def _section_strategy_talk(self, talk_lines: List[Dict]) -> str:
+    def _section_strategy_talk(self, talk_lines: List[Dict], image_url: str = '') -> str:
         if not talk_lines:
             return ''
         html = (
             '<section class="strategy-talk">\n'
             '<h2>☀️ 今日の作戦会議</h2>\n'
         )
-        html += _scene_image_html(config.IMG_MORNING_SCENE, '朝の作戦会議をする3人', 'scene-image scene-image-main', 'morning_scene')
+        html += _scene_image_html(image_url or config.IMG_MORNING_SCENE, '朝の作戦会議をする3人', 'scene-image scene-image-main', 'morning_scene')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')
@@ -439,12 +490,12 @@ class BlogGenerator:
     def _section_morning_entry(self, trade_date: str, entries: List[Dict]) -> str:
         return self._section_today_entry(trade_date, entries)
 
-    def _section_morning_three(self, talk_lines: List[Dict]) -> str:
+    def _section_morning_three(self, talk_lines: List[Dict], image_url: str = '') -> str:
         """朝記事: 今朝の3人（順位・選択・関係性セリフ）"""
         if not talk_lines:
             return ''
         html = '<section class="strategy-talk morning-three">\n<h2>💬 今朝の3人</h2>\n'
-        html += _scene_image_html('', '今朝の3人', 'scene-image scene-image-sub', 'morning_sub_scene')
+        html += _scene_image_html(image_url, '今朝の3人', 'scene-image scene-image-sub', 'morning_sub_scene')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')
@@ -473,14 +524,14 @@ class BlogGenerator:
     # 内部セクション — 夜記事
     # ------------------------------------------------------------------
 
-    def _section_push_points(self, push_points: List[Dict]) -> str:
+    def _section_push_points(self, push_points: List[Dict], image_url: str = '') -> str:
         if not push_points:
             return ''
         html = (
             '<section class="push-points">\n'
             '<h2>✨ 今日の名場面</h2>\n'
         )
-        html += _scene_image_html('', '今日の名場面', 'scene-image scene-image-sub', 'highlight_scene')
+        html += _scene_image_html(image_url, '今日の名場面', 'scene-image scene-image-sub', 'highlight_scene')
         for item in push_points:
             name = item.get('name', '')
             point = item.get('point', '')
@@ -494,7 +545,7 @@ class BlogGenerator:
     # 内部セクション — 共通
     # ------------------------------------------------------------------
 
-    def _section_today_hero(self, hero_char: Optional[Dict], daily: List[Dict]) -> str:
+    def _section_today_hero(self, hero_char: Optional[Dict], daily: List[Dict], image_url: str = '') -> str:
         if not hero_char:
             return ''
         name = hero_char['analyst_name']
@@ -506,7 +557,8 @@ class BlogGenerator:
 
         intro = self._generate_hero_intro(name, profile['personality'], profit, win, lose)
 
-        hero_img = _scene_image_html(CHAR_IMAGES.get(name, lambda: '')(), f'{profile["name_short"]}', 'scene-image hero-image', 'hero_scene')
+        hero_img_url = image_url or CHAR_IMAGES.get(name, lambda: '')()
+        hero_img = _scene_image_html(hero_img_url, f'{profile["name_short"]}', 'scene-image hero-image', 'hero_scene')
         return (
             f'<section class="today-hero character-{name}">\n'
             f'  <p class="section-label">今日の主役</p>\n'
@@ -660,14 +712,14 @@ class BlogGenerator:
             )
         return html
 
-    def _section_girls_talk(self, talk_lines: List[Dict], daily: List[Dict]) -> str:
+    def _section_girls_talk(self, talk_lines: List[Dict], daily: List[Dict], image_url: str = '') -> str:
         if not talk_lines:
             return ''
         html = (
             '<section class="girls-talk">\n'
             '<h2>🌙 今日の反省会</h2>\n'
         )
-        html += _scene_image_html(config.IMG_EVENING_SCENE, '夜の反省会をする3人', 'scene-image scene-image-main', 'night_reflection_scene')
+        html += _scene_image_html(image_url or config.IMG_EVENING_SCENE, '夜の反省会をする3人', 'scene-image scene-image-main', 'night_reflection_scene')
         for line in talk_lines:
             name = line.get('name', '')
             text = line.get('line', '')

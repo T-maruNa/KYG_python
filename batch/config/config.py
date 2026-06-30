@@ -23,7 +23,6 @@ class Config:
     MONTHLY_AI_BUDGET_JPY = int(os.getenv('MONTHLY_AI_BUDGET_JPY', '3000'))
     DAILY_AI_CALL_LIMIT = int(os.getenv('DAILY_AI_CALL_LIMIT', '5'))
     AI_RETRY_LIMIT = int(os.getenv('AI_RETRY_LIMIT', '2'))
-    ENABLE_DAILY_IMAGE_GENERATION = os.getenv('ENABLE_DAILY_IMAGE_GENERATION', 'false').lower() == 'true'
     ENABLE_MONTHLY_MVP_IMAGE = os.getenv('ENABLE_MONTHLY_MVP_IMAGE', 'true').lower() == 'true'
     MAX_CANDIDATES_PER_RANGE = int(os.getenv('MAX_CANDIDATES_PER_RANGE', '30'))
 
@@ -36,6 +35,11 @@ class Config:
     IMG_REI   = os.getenv('IMG_REI', '')                    # 玲の固定フォールバック画像
     IMG_MIRAI = os.getenv('IMG_MIRAI', '')                  # みらいの固定フォールバック画像
     IMG_RITU  = os.getenv('IMG_RITU', '')                   # 律の固定フォールバック画像
+
+    # 画像生成プロバイダー設定
+    IMAGE_PROVIDER = os.getenv('IMAGE_PROVIDER', 'openai')
+    IMAGE_MODEL    = os.getenv('IMAGE_MODEL', 'gpt-image-1')
+    IMAGE_API_KEY  = os.getenv('IMAGE_API_KEY') or os.getenv('OPENAI_STOCK_API_KEY')
 
     # 画像自動生成設定
     ENABLE_DAILY_IMAGE_GENERATION   = os.getenv('ENABLE_DAILY_IMAGE_GENERATION', 'false').lower() == 'true'
