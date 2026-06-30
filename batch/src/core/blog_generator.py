@@ -396,7 +396,7 @@ class BlogGenerator:
             self._section_strategy_talk(talk_lines, image_url=img_morning_scene),
             self._section_morning_entry(trade_date, today_entries),
             self._section_morning_three(morning_three, image_url=img_morning_sub),
-            self._section_result_teaser(trade_date),
+            self._section_result_teaser(trade_date, narrator),
             DISCLAIMER,
             '</section>',
         ]
@@ -495,7 +495,7 @@ class BlogGenerator:
             self._section_girls_talk(girls_talk_lines, daily, image_url=img_night),
             self._section_push_points(push_points, image_url=img_highlight),
             self._section_ranking(ranking, year_month, narrative=ranking_narrative),
-            f'<p class="next-hook">{next_hook}</p>',
+            self._section_next_hook(next_hook, narrator),
             self._section_cumulative(cumulative_mvp),
             DISCLAIMER,
             '</section>',
@@ -633,13 +633,18 @@ class BlogGenerator:
         html += '</section>\n'
         return html
 
-    def _section_result_teaser(self, trade_date: str) -> str:
+    def _section_result_teaser(self, trade_date: str, narrator: str = 'rei') -> str:
+        avatar = _narrator_avatar_html(narrator)
         return (
-            '<div class="result-teaser">'
+            f'<div class="result-teaser">{avatar}'
             'この勝負の結果は、今夜22時ごろに発表予定です。<br>'
             'お楽しみに！'
             '</div>\n'
         )
+
+    def _section_next_hook(self, text: str, narrator: str = 'rei') -> str:
+        avatar = _narrator_avatar_html(narrator)
+        return f'<div class="next-hook">{avatar}{text}</div>\n'
 
     def _section_morning_link(self, url: str = None) -> str:
         if not url:

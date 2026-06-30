@@ -758,9 +758,10 @@ def section_morning_three(talk_lines: list) -> str:
     html += '</section>\n'
     return html
 
-def section_result_teaser(trade_date: str) -> str:
+def section_result_teaser(trade_date: str, narrator: str = 'rei') -> str:
+    avatar = _narrator_avatar_html(narrator)
     return (
-        '<div class="result-teaser">'
+        f'<div class="result-teaser">{avatar}'
         'この勝負の結果は、今夜22時ごろに発表予定です。<br>'
         'お楽しみに！'
         '</div>\n'
@@ -979,7 +980,7 @@ def build_morning_html() -> str:
         section_strategy_talk(talk_lines),
         s_entry,
         section_morning_three(morning_three),
-        section_result_teaser(SAMPLE_TRADE_DATE),
+        section_result_teaser(SAMPLE_TRADE_DATE, narrator),
         DISCLAIMER,
         '</div>',
     ])
@@ -1040,7 +1041,7 @@ def build_evening_html() -> str:
         section_girls_talk(talk_lines),
         section_push_points(push_points),
         s_rank,
-        f'<p class="next-hook">{next_hook}</p>',
+        f'<div class="next-hook">{_narrator_avatar_html(narrator)}{next_hook}</div>',
         s_cum,
         DISCLAIMER,
         '</div>',
