@@ -4,6 +4,11 @@
 使い方:
     service = ImageGenerationService()
     url = service.generate_morning_scene(target_date, context)
+
+フォールバック順序:
+    1. OpenAI API で生成した URL
+    2. assets/scenes/ 配下の固定画像（手動配置）
+    3. None → blog_generator 側で HTML プレースホルダーに変換
 """
 import os
 from typing import Optional, Dict
@@ -11,6 +16,8 @@ from config.config import config
 from .base_provider import BaseImageProvider
 from src.database.t_generated_images_manager import TGeneratedImagesManager
 
+# batch/assets/ を絶対パスで解決する
+# このファイルは batch/src/image_generation/ にあるので4階層上がる
 ASSETS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
     'assets',
@@ -18,16 +25,22 @@ ASSETS_DIR = os.path.join(
 
 
 def _char_asset(character: str, variant: str) -> str:
+    """キャラクター別固定アセットのパスを返す（例: assets/characters/rei/base.png）"""
     return os.path.join(ASSETS_DIR, 'characters', character, f'{variant}.png')
 
 
 def _scene_fallback(image_type: str, character_key: Optional[str] = None) -> Optional[str]:
+    """
+    API 生成失敗時の固定画像フォールバック。
+    ファイルが存在しない場合は None を返し、呼び出し側でプレースホルダーへ変換する。
+    """
     fallbacks = {
         'morning_scene':          os.path.join(ASSETS_DIR, 'scenes', 'morning_meeting_default.png'),
         'morning_sub_scene':      os.path.join(ASSETS_DIR, 'scenes', 'morning_sub_default.png'),
         'night_reflection_scene': os.path.join(ASSETS_DIR, 'scenes', 'night_reflection_default.png'),
         'highlight_scene':        os.path.join(ASSETS_DIR, 'scenes', 'highlight_default.png'),
     }
+    # 今日の主役はキャラ固有の normal 表情画像を使う
     if image_type == 'hero_scene' and character_key:
         path = _char_asset(character_key, 'normal')
         return path if os.path.exists(path) else None
@@ -38,6 +51,7 @@ def _scene_fallback(image_type: str, character_key: Optional[str] = None) -> Opt
 
 class ImageGenerationService:
     def __init__(self, provider: Optional[BaseImageProvider] = None):
+        # テスト時は provider をモックに差し替えられる
         if provider is None:
             provider = self._build_provider()
         self._provider = provider
@@ -45,6 +59,7 @@ class ImageGenerationService:
 
     @staticmethod
     def _build_provider() -> BaseImageProvider:
+        """IMAGE_PROVIDER 環境変数でプロバイダーを切り替える"""
         name = config.IMAGE_PROVIDER.lower()
         if name == 'openai':
             from .openai_provider import OpenAIImageProvider
@@ -52,6 +67,11 @@ class ImageGenerationService:
         raise ValueError(f'未対応のIMAGE_PROVIDER: {name}')
 
     def _reference_images(self, characters: list) -> list:
+        """
+        指定キャラの base.png / reference_sheet.png を返す。
+        これを OpenAI images.edit に渡すことでキャラの外見を維持した生成ができる。
+        ファイルが存在しない場合は空リストになり、通常の generate に切り替わる。
+        """
         refs = []
         for char in characters:
             base = _char_asset(char, 'base')
@@ -65,6 +85,13 @@ class ImageGenerationService:
     def _generate(self, target_date: str, post_type: str, image_type: str,
                   character_key: Optional[str], prompt: str,
                   reference_characters: list) -> Optional[str]:
+        """
+        共通の生成フロー。
+        - ENABLE_DAILY_IMAGE_GENERATION=false なら即 None（デフォルト無効）
+        - 1日の生成上限（DAILY_IMAGE_GENERATION_LIMIT）を超えたら生成しない
+        - IMAGE_RETRY_LIMIT 回リトライ（デフォルト1回）
+        - 結果（成功・失敗問わず）を t_generated_images に upsert する
+        """
         if not config.ENABLE_DAILY_IMAGE_GENERATION:
             return None
 
@@ -76,6 +103,7 @@ class ImageGenerationService:
         url = None
         error_msg = None
 
+        # IMAGE_RETRY_LIMIT=1 なら最大2回試みる（初回 + リトライ1回）
         for attempt in range(1, config.IMAGE_RETRY_LIMIT + 2):
             try:
                 url = self._provider.generate(prompt, ref_images)
@@ -87,6 +115,7 @@ class ImageGenerationService:
 
         status = 'success' if url else 'failed'
         try:
+            # 再実行時は ON CONFLICT で上書き更新される
             self._db.upsert(
                 target_date=target_date,
                 post_type=post_type,
@@ -106,6 +135,7 @@ class ImageGenerationService:
 
     def _with_fallback(self, url: Optional[str], image_type: str,
                        character_key: Optional[str] = None) -> Optional[str]:
+        """生成 URL がなければ固定アセットにフォールバック。それもなければ None。"""
         if url:
             return url
         return _scene_fallback(image_type, character_key)

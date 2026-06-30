@@ -2,6 +2,7 @@ import json
 import os
 import re
 from typing import List, Dict, Optional, Tuple
+# openai パッケージ未インストール時でも記事生成は継続できるように遅延インポート
 try:
     from src.image_generation.image_generation_service import ImageGenerationService
     _IMAGE_GENERATION_AVAILABLE = True
@@ -54,6 +55,8 @@ ANALYST_PROFILES = {
     },
 }
 
+# キャラごとの固定フォールバック画像URL（.env の IMG_REI 等で設定）
+# 自動生成が無効またはAPI失敗時に使われる
 CHAR_IMAGES = {
     'rei':   lambda: config.IMG_REI,
     'mirai': lambda: config.IMG_MIRAI,
@@ -62,8 +65,13 @@ CHAR_IMAGES = {
 
 def _scene_image_html(url: str, alt: str, css_class: str = 'scene-image',
                       image_type: str = '') -> str:
+    """
+    url があれば <img> タグを返し、なければ点線ボックスのプレースホルダーを返す。
+    これにより、画像なし状態でも記事レイアウトが崩れない。
+    """
     if url:
         return f'<div class="{css_class}"><img src="{url}" alt="{alt}"></div>\n'
+    # image_type で表示ラベルを切り替え（読者に何が入る予定かを示す）
     label = {
         'morning_scene':         '☀️ 朝の作戦会議 3人集合画像（自動生成）',
         'morning_sub_scene':     '💬 今朝の3人 サブ画像（自動生成）',
@@ -239,6 +247,8 @@ class BlogGenerator:
         self.stats = StatsAggregator()
         self.gemini = GeminiClient()
         self.guard = AIBudgetGuard()
+        # 画像生成はオプション機能。パッケージ未インストール or API キー未設定でも
+        # image_service = None になるだけで記事生成はそのまま動く
         if _IMAGE_GENERATION_AVAILABLE:
             try:
                 self.image_service = ImageGenerationService()
@@ -268,6 +278,7 @@ class BlogGenerator:
         morning_three = self._generate_morning_three(today_entries, ranking)
 
         # 画像生成（失敗しても記事生成は継続）
+        # URL が空文字のまま渡されると _scene_image_html がプレースホルダーに変換する
         img_morning_scene = ''
         img_morning_sub = ''
         if self.image_service:
@@ -341,7 +352,9 @@ class BlogGenerator:
         push_points = self._generate_push_points(daily)
         next_hook = self._generate_next_hook(daily, ranking)
 
-        # 画像生成（失敗しても記事生成は継続）
+        # 夜記事用 画像生成（失敗しても記事生成は継続）
+        # hero_expression は損益率から算出（victory/happy/worried/defeated）し
+        # プロンプトに含めることで表情違いの画像を生成する
         img_hero = ''
         img_night = ''
         img_highlight = ''
@@ -361,6 +374,7 @@ class BlogGenerator:
             except Exception as e:
                 print(f'[BlogGenerator] night_reflection_scene 生成失敗: {e}')
             try:
+                # ハイライトシーンは push_points の最初の情景描写をプロンプトに使う
                 highlight_desc = push_points[0].get('point', '') if push_points else ''
                 img_highlight = self.image_service.generate_highlight_scene(result_date, highlight_desc) or ''
             except Exception as e:
