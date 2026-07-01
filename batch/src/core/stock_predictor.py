@@ -20,6 +20,7 @@ from src.database.m_stock_manager import MStockManager
 from src.database.t_stock_actual_manager import TStockActualManager
 from src.core.ai_budget_guard import AIBudgetGuard
 from src.core.feature_calculator import FeatureCalculator
+from src.core.prompt_loader import PromptLoader
 
 
 RANGE_LIMITS = {100: 300_000, 1000: 300_000, 10000: 400_000}
@@ -206,17 +207,14 @@ class StockPredictor:
         return [
             {
                 'role': 'system',
-                'content': (
-                    f'あなたは{analyst.name_jp}です。{analyst.title}として、{analyst.description}'
-                ),
+                'content': PromptLoader.character_system(analyst.name, analyst.name_jp),
             },
             {
                 'role': 'user',
                 'content': (
                     f'以下のCSVはPythonが事前にスコアリング・絞り込みを済ませた候補銘柄です（{yesterday_date}基準）：\n'
                     f'{csv_text}\n\n'
-                    f'{tomorrow_date}の終値が最も上がりそうな銘柄を、あなたのキャラクターとして選んでください。\n'
-                    f'あなたの専門分野である{analyst.style}の観点から、特に{analyst.focus}に注目してください。'
+                    f'{tomorrow_date}の終値が最も上がりそうな銘柄を、あなたのキャラクターとして選んでください。'
                     f'{strategy_hint}\n\n'
                     f'以下の条件で銘柄を選んでください：\n{range_desc}\n'
                     f'合計{len(active_ranges)}銘柄を選んでください。\n'
@@ -395,7 +393,7 @@ class StockPredictor:
         try:
             messages = [
                 {'role': 'system',
-                 'content': f'あなたは{ritu.name_jp}です。{ritu.title}。{ritu.description}'},
+                 'content': PromptLoader.character_system(ritu.name, ritu.name_jp)},
                 {'role': 'user',
                  'content': (
                      f'「勘で選んだ！今日はお腹減ってたから！」のような、判断材料にならない理由を{count}個言って。'
