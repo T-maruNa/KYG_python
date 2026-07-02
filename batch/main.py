@@ -2,7 +2,10 @@
 AI Virtual Investment Battle — メインバッチ
 
 Usage:
-    python main.py            # 通常実行
+    python main.py            # 通常実行（朝バッチ）
+    python main.py --evening  # 夜バッチ（結果記事）
+    python main.py --saturday # 土曜バッチ（週間日常記事）
+    python main.py --sunday   # 日曜バッチ（3人集合・来週へ）
     python main.py --dry-run  # ネットワーク呼び出し・WordPress投稿をスキップ
     python main.py --backfill # 過去30日分の株価データを取得して終了
 """
@@ -40,13 +43,16 @@ from src.features.feature_builder import FeatureBuilder
 from src.selection.candidate_filter import CandidateFilter
 from src.selection.candidate_scorer import CandidateScorer
 from src.database.t_candidate_stock_scores_manager import TCandidateStockScoresManager
+from src.database.t_daily_result_manager import TDailyResultManager
 
 # ------------------------------------------------------------------
 # 引数パース
 # ------------------------------------------------------------------
-DRY_RUN = '--dry-run' in sys.argv
-BACKFILL = '--backfill' in sys.argv
-EVENING_RUN = '--evening' in sys.argv
+DRY_RUN      = '--dry-run'  in sys.argv
+BACKFILL     = '--backfill' in sys.argv
+EVENING_RUN  = '--evening'  in sys.argv
+SATURDAY_RUN = '--saturday' in sys.argv
+SUNDAY_RUN   = '--sunday'   in sys.argv
 
 
 def _is_business_day(d: date) -> bool:
@@ -72,6 +78,24 @@ def _next_business_day(d: date) -> date:
     while not _is_business_day(target):
         target += timedelta(days=1)
     return target
+
+
+def _week_range(d: date):
+    """d が属する週の月曜〜金曜（最終営業日）を返す（week_start, week_end）。"""
+    monday = d - timedelta(days=d.weekday())  # その週の月曜
+    friday = monday + timedelta(days=4)
+    # 金曜が祝日なら直前の営業日へ
+    while not _is_business_day(friday) and friday > monday:
+        friday -= timedelta(days=1)
+    return monday, friday
+
+
+def _parse_post_hour(time_str: str, default: int = 10) -> int:
+    """'HH:MM' 形式の文字列から時間（int）を返す。"""
+    try:
+        return int(time_str.split(':')[0])
+    except Exception:
+        return default
 
 
 # ------------------------------------------------------------------
@@ -169,6 +193,122 @@ if EVENING_RUN:
         print(f'夜記事スキップ: {formatted_today} は投稿済み')
 
     print(f'=== 夜バッチ完了 {formatted_today} ===')
+    sys.exit(0)
+
+# ------------------------------------------------------------------
+# 土曜バッチモード（--saturday）
+# ------------------------------------------------------------------
+if SATURDAY_RUN:
+    from config.config import config as _cfg
+    week_start, week_end = _week_range(today)
+    formatted_week_start = week_start.strftime('%Y-%m-%d')
+    formatted_week_end   = week_end.strftime('%Y-%m-%d')
+    next_sunday = today + timedelta(days=1)
+    formatted_next_sunday = next_sunday.strftime('%Y-%m-%d')
+
+    daily_manager = TDailyResultManager()
+    weekly_ranking = daily_manager.get_weekly_summary(formatted_week_start, formatted_week_end)
+    if not weekly_ranking:
+        print(f'週間データなし: {formatted_week_start}〜{formatted_week_end}')
+        sys.exit(0)
+
+    blog_gen    = BlogGenerator()
+    blog_history = TBlogPostHistoryManager()
+    saturday_hour = _parse_post_hour(_cfg.SATURDAY_POST_TIME, 10)
+
+    if not blog_history.exists(formatted_today, 'weekly_life_log'):
+        print('\n土曜記事生成中...')
+        sat_title, sat_content = blog_gen.generate_weekly_life_log(
+            target_date=formatted_today,
+            week_start_date=formatted_week_start,
+            week_end_date=formatted_week_end,
+            weekly_ranking=weekly_ranking,
+        )
+        errors = blog_gen.check(sat_content, [])
+        if errors:
+            print(f'土曜記事チェックNG: {errors}')
+        elif DRY_RUN:
+            print(f'\n[DRY-RUN] 土曜記事プレビュー: {sat_title}')
+            print(sat_content)
+        else:
+            wp = WordPressClient()
+            result = wp.post(sat_title, sat_content, formatted_today,
+                             scheduled_hour=saturday_hour,
+                             tags=['鷲見玲', '桜庭みらい', '一ノ瀬律', 'AI投資バトル', '週間日常'])
+            if result:
+                blog_history.insert(formatted_today, 'weekly_life_log',
+                                    title=sat_title, content=sat_content,
+                                    wp_post_id=result['id'], wp_post_url=result.get('url'),
+                                    status='scheduled')
+                print(f'土曜記事WordPress投稿完了: post_id={result["id"]}')
+            else:
+                blog_history.insert(formatted_today, 'weekly_life_log',
+                                    title=sat_title, content=sat_content, status='failed')
+                print('土曜記事WordPress投稿失敗')
+    else:
+        print(f'土曜記事スキップ: {formatted_today} は投稿済み')
+
+    print(f'=== 土曜バッチ完了 {formatted_today} ===')
+    sys.exit(0)
+
+# ------------------------------------------------------------------
+# 日曜バッチモード（--sunday）
+# ------------------------------------------------------------------
+if SUNDAY_RUN:
+    from config.config import config as _cfg
+    week_start, week_end = _week_range(today)
+    formatted_week_start = week_start.strftime('%Y-%m-%d')
+    formatted_week_end   = week_end.strftime('%Y-%m-%d')
+    next_monday = _next_business_day(today)
+    formatted_next_monday = next_monday.strftime('%Y-%m-%d')
+    formatted_saturday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+
+    daily_manager = TDailyResultManager()
+    weekly_ranking = daily_manager.get_weekly_summary(formatted_week_start, formatted_week_end)
+    if not weekly_ranking:
+        print(f'週間データなし: {formatted_week_start}〜{formatted_week_end}')
+        sys.exit(0)
+
+    blog_gen    = BlogGenerator()
+    blog_history = TBlogPostHistoryManager()
+    sunday_hour = _parse_post_hour(_cfg.SUNDAY_POST_TIME, 10)
+    saturday_url = blog_history.get_post_url(formatted_saturday, 'weekly_life_log')
+
+    if not blog_history.exists(formatted_today, 'sunday_strategy_talk'):
+        print('\n日曜記事生成中...')
+        sun_title, sun_content = blog_gen.generate_sunday_strategy_talk(
+            target_date=formatted_today,
+            week_start_date=formatted_week_start,
+            week_end_date=formatted_week_end,
+            weekly_ranking=weekly_ranking,
+            saturday_post_url=saturday_url,
+            next_monday_date=formatted_next_monday,
+        )
+        errors = blog_gen.check(sun_content, [])
+        if errors:
+            print(f'日曜記事チェックNG: {errors}')
+        elif DRY_RUN:
+            print(f'\n[DRY-RUN] 日曜記事プレビュー: {sun_title}')
+            print(sun_content)
+        else:
+            wp = WordPressClient()
+            result = wp.post(sun_title, sun_content, formatted_today,
+                             scheduled_hour=sunday_hour,
+                             tags=['鷲見玲', '桜庭みらい', '一ノ瀬律', 'AI投資バトル', '作戦会議'])
+            if result:
+                blog_history.insert(formatted_today, 'sunday_strategy_talk',
+                                    title=sun_title, content=sun_content,
+                                    wp_post_id=result['id'], wp_post_url=result.get('url'),
+                                    status='scheduled')
+                print(f'日曜記事WordPress投稿完了: post_id={result["id"]}')
+            else:
+                blog_history.insert(formatted_today, 'sunday_strategy_talk',
+                                    title=sun_title, content=sun_content, status='failed')
+                print('日曜記事WordPress投稿失敗')
+    else:
+        print(f'日曜記事スキップ: {formatted_today} は投稿済み')
+
+    print(f'=== 日曜バッチ完了 {formatted_today} ===')
     sys.exit(0)
 
 # ------------------------------------------------------------------

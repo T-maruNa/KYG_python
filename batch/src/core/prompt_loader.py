@@ -45,6 +45,18 @@ class PromptLoader:
         return _load('talk_prompt.md')
 
     @staticmethod
+    def weekend_policy() -> str:
+        return _load('weekend_policy.md')
+
+    @staticmethod
+    def weekly_life_log() -> str:
+        return _load('weekly_life_log_prompt.md')
+
+    @staticmethod
+    def sunday_strategy_talk() -> str:
+        return _load('sunday_strategy_talk_prompt.md')
+
+    @staticmethod
     def base_system(role: str = '投資シミュレーションブログの脚本家') -> str:
         """共通ルール + キャラクター設定を結合したシステムプロンプトを返す。"""
         return (

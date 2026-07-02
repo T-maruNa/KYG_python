@@ -57,6 +57,10 @@ class Config:
     IMAGE_API_KEY  = os.getenv('IMAGE_API_KEY') or os.getenv('OPENAI_STOCK_API_KEY')
 
     # 画像自動生成設定
+    # 土日記事投稿時刻（HH:MM 形式）
+    SATURDAY_POST_TIME = os.getenv('SATURDAY_POST_TIME', '10:00')
+    SUNDAY_POST_TIME   = os.getenv('SUNDAY_POST_TIME',   '10:00')
+
     ENABLE_DAILY_IMAGE_GENERATION   = os.getenv('ENABLE_DAILY_IMAGE_GENERATION', 'false').lower() == 'true'
     DAILY_IMAGE_GENERATION_LIMIT    = int(os.getenv('DAILY_IMAGE_GENERATION_LIMIT', '5'))
     IMAGE_RETRY_LIMIT               = int(os.getenv('IMAGE_RETRY_LIMIT', '1'))

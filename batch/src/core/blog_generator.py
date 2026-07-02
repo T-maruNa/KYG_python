@@ -214,6 +214,26 @@ BATTLE_CSS = '''<style>
 .push-item.mirai{background:#fff0f5;border-left:4px solid #f0a0c0;}
 .push-item.ritu{background:#fffadb;border-left:4px solid #f5cc50;}
 .morning-link{background:#f5f5f5;border-radius:14px;padding:12px 16px;margin:16px 0;font-size:.88rem;color:#666;text-align:center;}
+/* 土日記事 */
+.weekend-beginning{background:linear-gradient(135deg,#f5f0ff,#ffe8f5);border:1px solid #e0c8f0;border-radius:22px;padding:20px 22px;margin:20px 0;box-shadow:0 6px 18px rgba(80,60,90,.07);}
+.weekend-beginning .beginning-text{color:#4b3b57;}
+.weekend-ranking{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
+.weekend-ranking h2::before{content:"📊 ";font-style:normal;}
+.weekend-char-section{border-radius:24px;padding:22px 20px;margin:18px 0;box-shadow:0 10px 28px rgba(80,60,90,.09);}
+.weekend-char-section.character-rei{background:linear-gradient(135deg,#e8f2ff,#f1f7ff);}
+.weekend-char-section.character-mirai{background:linear-gradient(135deg,#ffe8f2,#fff3f7);}
+.weekend-char-section.character-ritu{background:linear-gradient(135deg,#fff8d0,#fffde8);}
+.weekend-status-badge{display:inline-block;font-size:.8rem;border-radius:999px;padding:3px 10px;margin-bottom:8px;font-weight:600;}
+.status-outing{background:#d4f5e9;color:#1a7a4a;}
+.status-neutral{background:#e8e8f8;color:#4a4a7a;}
+.status-stay-home{background:#fde8e8;color:#7a2020;}
+.weekend-talk{background:#fff;border-radius:24px;padding:20px 22px;margin:24px 0;box-shadow:0 8px 22px rgba(80,60,90,.07);}
+.weekend-talk h2::before{content:"💬 ";font-style:normal;}
+.weekend-hook{background:linear-gradient(135deg,#f0f8ff,#fff5fb);border-radius:18px;padding:16px 20px;margin:24px 0;font-size:.95rem;color:#4b3b57;border:1px solid #e0ddea;text-align:center;}
+.gathering-scene{background:#fff;border-radius:18px;padding:16px 20px;margin:18px 0;font-size:.97rem;color:#4b3b57;line-height:2;box-shadow:0 4px 14px rgba(80,60,90,.06);}
+.strategy-memo{background:linear-gradient(135deg,#fff9f0,#fff5e0);border-radius:18px;padding:16px 20px;margin:18px 0;border:1px solid #f5ddb0;}
+.strategy-memo h2::before{content:"📝 ";font-style:normal;}
+.monday-hook{background:linear-gradient(135deg,#f3f8ff,#fff7fb);border-radius:18px;padding:16px 20px;margin:24px 0;text-align:center;font-size:.95rem;color:#4b3b57;border:1px solid #e0e8f5;}
 @media(max-width:640px){
   .battle-hero{padding:20px 16px;border-radius:20px;}
   .character-card,.today-hero,.girls-talk{padding:16px;}
@@ -562,6 +582,355 @@ class BlogGenerator:
             '</section>',
         ]
         return '\n'.join(sections)
+
+    # ------------------------------------------------------------------
+    # 土曜記事：weekly_life_log
+    # ------------------------------------------------------------------
+
+    def generate_weekly_life_log(
+        self,
+        target_date: str,
+        week_start_date: str,
+        week_end_date: str,
+        weekly_ranking: List[Dict],
+        initial_balance: int = 1_000_000,
+        sunday_post_url: str = None,
+    ) -> Tuple[str, str]:
+        """土曜10時の週間日常記事を生成する。"""
+        ai_data = self._generate_weekly_life_log_content(
+            weekly_ranking, initial_balance, week_start_date, week_end_date
+        )
+        lead         = ai_data.get('lead', '今週も3人の勝負が終わりました。')
+        beginning    = ai_data.get('saturday_beginning', '土曜日の朝が始まった。')
+        char_sections = ai_data.get('char_sections', [])
+        sunday_hook  = ai_data.get('sunday_hook', '明日は3人が集まります。')
+
+        week_label = f'{week_start_date}〜{week_end_date}'
+        title = f'【AI投資バトル】週間日常記録｜{week_label}'
+
+        hero_html = (
+            f'<div class="battle-hero">'
+            f'<p class="battle-label">AI Virtual Investment Battle</p>'
+            f'<h1>{title}</h1>'
+            f'<p class="battle-lead">{lead}</p>'
+            f'</div>'
+        )
+        notice = (
+            '<p class="sim-notice">この記事は、AIキャラクターによる投資シミュレーション企画です。'
+            '実際の売買を行ったものではありません。</p>'
+        )
+
+        sections = [
+            BATTLE_CSS,
+            '<section class="battle-article">',
+            hero_html,
+            notice,
+            self._section_weekend_beginning(beginning, css='morning-beginning'),
+            self._section_weekly_ranking(weekly_ranking, week_label, initial_balance),
+        ]
+        for cs in char_sections:
+            sections.append(self._section_weekend_char(cs, weekly_ranking))
+        sections += [
+            self._section_weekend_talk(char_sections),
+            self._section_weekend_hook(sunday_hook, hook_type='sunday'),
+            DISCLAIMER,
+            '</section>',
+        ]
+        content = '\n'.join(sections)
+        return title, content
+
+    # ------------------------------------------------------------------
+    # 日曜記事：sunday_strategy_talk
+    # ------------------------------------------------------------------
+
+    def generate_sunday_strategy_talk(
+        self,
+        target_date: str,
+        week_start_date: str,
+        week_end_date: str,
+        weekly_ranking: List[Dict],
+        initial_balance: int = 1_000_000,
+        saturday_post_url: str = None,
+        next_monday_date: str = None,
+    ) -> Tuple[str, str]:
+        """日曜10時の3人集合・来週へつなぐ記事を生成する。"""
+        ai_data = self._generate_sunday_strategy_content(
+            weekly_ranking, initial_balance, week_start_date, week_end_date,
+            next_monday_date or '', saturday_post_url or ''
+        )
+        lead           = ai_data.get('lead', '日曜日、3人が集まった。')
+        beginning      = ai_data.get('sunday_beginning', '週末の朝、3人は同じ場所に向かっていた。')
+        gathering      = ai_data.get('gathering_scene', '3人はいつもの場所に集まった。')
+        weekly_recap   = ai_data.get('weekly_recap', '')
+        talk_lines     = ai_data.get('talk_lines', [])
+        strategy_memo  = ai_data.get('strategy_memo', '来週もそれぞれのやり方で挑む。')
+        monday_hook    = ai_data.get('monday_hook', '月曜の朝、また3人の作戦会議が始まる。')
+
+        week_label = f'{week_start_date}〜{week_end_date}'
+        title = f'【AI投資バトル】日曜集合・来週へ｜{week_label}'
+
+        hero_html = (
+            f'<div class="battle-hero">'
+            f'<p class="battle-label">AI Virtual Investment Battle</p>'
+            f'<h1>{title}</h1>'
+            f'<p class="battle-lead">{lead}</p>'
+            f'</div>'
+        )
+        notice = (
+            '<p class="sim-notice">この記事は、AIキャラクターによる投資シミュレーション企画です。'
+            '実際の売買を行ったものではありません。</p>'
+        )
+
+        sections = [
+            BATTLE_CSS,
+            '<section class="battle-article">',
+            hero_html,
+            notice,
+            self._section_weekend_beginning(beginning, css='night-beginning'),
+            self._section_gathering(gathering),
+            self._section_weekly_ranking(weekly_ranking, week_label, initial_balance),
+            self._section_sunday_talk(talk_lines, weekly_recap),
+            self._section_strategy_memo(strategy_memo),
+            self._section_weekend_hook(monday_hook, hook_type='monday'),
+            DISCLAIMER,
+            '</section>',
+        ]
+        content = '\n'.join(sections)
+        return title, content
+
+    # ------------------------------------------------------------------
+    # 土日記事：セクション HTML ヘルパー
+    # ------------------------------------------------------------------
+
+    def _section_weekend_beginning(self, text: str, css: str = 'morning-beginning') -> str:
+        return (
+            f'<div class="day-beginning weekend-beginning {css}">'
+            f'<p class="beginning-text">{text}</p>'
+            f'</div>\n'
+        )
+
+    def _section_weekly_ranking(self, weekly_ranking: List[Dict],
+                                 week_label: str, initial_balance: int) -> str:
+        rows = ''
+        for r in weekly_ranking:
+            name = ANALYST_PROFILES.get(r['analyst_name'], {}).get('name_jp', r['analyst_name'])
+            pl   = r.get('weekly_profit_loss', 0)
+            sign = '+' if pl >= 0 else ''
+            rate = (r.get('current_balance', initial_balance) - initial_balance) / initial_balance * 100
+            medal = _RANK_MEDAL.get(r['rank'], '')
+            rows += (
+                f'<div class="ranking-card">'
+                f'<span class="rank-badge {_RANK_BADGE_CLASS.get(r["rank"], "rank-badge-n")}">'
+                f'{medal}{r["rank"]}</span>'
+                f'<div><strong>{name}</strong>'
+                f'<span class="result-meta"> 週間 {sign}{pl:,}円'
+                f' / 月初比 {rate:+.1f}%</span></div>'
+                f'</div>\n'
+            )
+        return (
+            f'<div class="weekend-ranking">'
+            f'<h2>今週の週間ランキング（{week_label}）</h2>'
+            f'{rows}'
+            f'</div>\n'
+        )
+
+    def _section_weekend_char(self, cs: Dict, weekly_ranking: List[Dict]) -> str:
+        name  = cs.get('name', '')
+        text  = cs.get('day_text', '')
+        comment = cs.get('comment', '')
+        profile = ANALYST_PROFILES.get(name, {'name_jp': name, 'name_short': name})
+
+        rank_entry = next((r for r in weekly_ranking if r['analyst_name'] == name), {})
+        rank = rank_entry.get('rank', 0)
+        status_map = {1: ('outing', '外に出る'), 2: ('neutral', '近場で整える'), 3: ('stay-home', '家で立て直す')}
+        status_key, status_label = status_map.get(rank, ('neutral', ''))
+
+        img_html = _avatar_html(name, 'normal')
+        balloon  = f'<div class="character-balloon">{comment}</div>' if comment else ''
+        return (
+            f'<div class="weekend-char-section character-{name}">'
+            f'<span class="weekend-status-badge status-{status_key}">{status_label}</span>'
+            f'<div class="character-header">'
+            f'{img_html}'
+            f'<div><h2>{profile["name_jp"]}</h2></div>'
+            f'</div>'
+            f'<p>{text}</p>'
+            f'{balloon}'
+            f'</div>\n'
+        )
+
+    def _section_weekend_talk(self, char_sections: List[Dict]) -> str:
+        lines_html = ''
+        for cs in char_sections:
+            name    = cs.get('name', '')
+            comment = cs.get('comment', '')
+            profile = ANALYST_PROFILES.get(name, {'name_short': name})
+            if comment:
+                lines_html += (
+                    f'<div class="talk-line {name}">'
+                    f'<strong>{profile["name_short"]}</strong>「{comment}」'
+                    f'</div>\n'
+                )
+        return (
+            f'<div class="weekend-talk girls-talk">'
+            f'<h2>3人の週末ひとこと</h2>'
+            f'{lines_html}'
+            f'</div>\n'
+        )
+
+    def _section_gathering(self, text: str) -> str:
+        return f'<div class="gathering-scene"><p>{text}</p></div>\n'
+
+    def _section_sunday_talk(self, talk_lines: List[Dict], weekly_recap: str) -> str:
+        recap_html = f'<p class="beginning-text">{weekly_recap}</p>' if weekly_recap else ''
+        lines_html = ''
+        for tl in talk_lines:
+            name = tl.get('name', '')
+            line = tl.get('line', '')
+            profile = ANALYST_PROFILES.get(name, {'name_short': name})
+            if line:
+                lines_html += (
+                    f'<div class="talk-line {name}">'
+                    f'<strong>{profile["name_short"]}</strong>「{line}」'
+                    f'</div>\n'
+                )
+        return (
+            f'<div class="weekend-talk girls-talk">'
+            f'<h2>今週を振り返る</h2>'
+            f'{recap_html}'
+            f'{lines_html}'
+            f'</div>\n'
+        )
+
+    def _section_strategy_memo(self, text: str) -> str:
+        return (
+            f'<div class="strategy-memo">'
+            f'<h2>来週の作戦メモ</h2>'
+            f'<p>{text}</p>'
+            f'</div>\n'
+        )
+
+    def _section_weekend_hook(self, text: str, hook_type: str = 'sunday') -> str:
+        icon = '🌙' if hook_type == 'sunday' else '☀️'
+        return f'<div class="weekend-hook">{icon} {text}</div>\n'
+
+    # ------------------------------------------------------------------
+    # 土日記事：AI コンテンツ生成
+    # ------------------------------------------------------------------
+
+    def _build_weekly_ranking_summary(self, weekly_ranking: List[Dict],
+                                       initial_balance: int) -> str:
+        lines = []
+        for r in weekly_ranking:
+            name = ANALYST_PROFILES.get(r['analyst_name'], {}).get('name_jp', r['analyst_name'])
+            pl   = r.get('weekly_profit_loss', 0)
+            bal  = r.get('current_balance', initial_balance)
+            rate = (bal - initial_balance) / initial_balance * 100
+            lines.append(
+                f'{r["rank"]}位 {name}：週間 {pl:+,}円 / 月初比 {rate:+.1f}%'
+            )
+        return '\n'.join(lines)
+
+    def _generate_weekly_life_log_content(
+        self,
+        weekly_ranking: List[Dict],
+        initial_balance: int,
+        week_start: str,
+        week_end: str,
+    ) -> Dict:
+        fallback = {
+            'lead': '今週も3人の投資バトルが終わりました。',
+            'saturday_beginning': '土曜日の朝が来た。それぞれの週末が始まる。',
+            'char_sections': [
+                {'name': r['analyst_name'], 'day_text': '週末を過ごした。', 'comment': ''}
+                for r in weekly_ranking
+            ],
+            'sunday_hook': '明日は3人が集まります。',
+        }
+        ranking_summary = self._build_weekly_ranking_summary(weekly_ranking, initial_balance)
+        rank1 = next((r for r in weekly_ranking if r['rank'] == 1), {})
+        rate1 = (rank1.get('current_balance', initial_balance) - initial_balance) / initial_balance * 100
+
+        try:
+            messages = [
+                {'role': 'system', 'content': (
+                    PromptLoader.base_system()
+                    + f'\n\n## 週末記事方針\n\n{PromptLoader.weekend_policy()}'
+                    + f'\n\n## 記事生成指示\n\n{PromptLoader.weekly_life_log()}'
+                )},
+                {'role': 'user', 'content': (
+                    f'対象週：{week_start}〜{week_end}\n'
+                    f'週間ランキング：\n{ranking_summary}\n'
+                    f'1位キャラの月初比増減率：{rate1:+.1f}%\n\n'
+                    f'上記データをもとに、土曜記事（weekly_life_log）のコンテンツをJSONで生成してください。'
+                )},
+            ]
+            raw = self.guard.execute(
+                self.ai.execute_chat, messages,
+                call_type='weekly_life_log', model='openai',
+            )
+            if raw:
+                m = re.search(r'\{.*\}', raw, re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group())
+                    if isinstance(parsed, dict) and 'char_sections' in parsed:
+                        return parsed
+        except Exception as e:
+            print(f'[BlogGenerator] weekly_life_log AI生成失敗: {e}')
+        return fallback
+
+    def _generate_sunday_strategy_content(
+        self,
+        weekly_ranking: List[Dict],
+        initial_balance: int,
+        week_start: str,
+        week_end: str,
+        next_monday_date: str,
+        saturday_post_url: str,
+    ) -> Dict:
+        fallback = {
+            'lead': '日曜日、3人が集まった。',
+            'sunday_beginning': '週末の午後、3人はいつもの場所に向かった。',
+            'gathering_scene': '3人が顔を合わせた。',
+            'weekly_recap': '今週を振り返りながら、来週へ気持ちを向けた。',
+            'talk_lines': [
+                {'name': r['analyst_name'], 'line': '来週も頑張ろう。'}
+                for r in weekly_ranking
+            ],
+            'strategy_memo': '来週もそれぞれのやり方で挑む。',
+            'monday_hook': '月曜の朝、また3人の作戦会議が始まる。',
+        }
+        ranking_summary = self._build_weekly_ranking_summary(weekly_ranking, initial_balance)
+
+        try:
+            saturday_hint = f'\n土曜記事URL：{saturday_post_url}' if saturday_post_url else ''
+            messages = [
+                {'role': 'system', 'content': (
+                    PromptLoader.base_system()
+                    + f'\n\n## 週末記事方針\n\n{PromptLoader.weekend_policy()}'
+                    + f'\n\n## 記事生成指示\n\n{PromptLoader.sunday_strategy_talk()}'
+                )},
+                {'role': 'user', 'content': (
+                    f'対象週：{week_start}〜{week_end}\n'
+                    f'週間ランキング：\n{ranking_summary}\n'
+                    f'次の月曜日：{next_monday_date}'
+                    f'{saturday_hint}\n\n'
+                    f'上記データをもとに、日曜記事（sunday_strategy_talk）のコンテンツをJSONで生成してください。'
+                )},
+            ]
+            raw = self.guard.execute(
+                self.ai.execute_chat, messages,
+                call_type='sunday_strategy_talk', model='openai',
+            )
+            if raw:
+                m = re.search(r'\{.*\}', raw, re.DOTALL)
+                if m:
+                    parsed = json.loads(m.group())
+                    if isinstance(parsed, dict) and 'talk_lines' in parsed:
+                        return parsed
+        except Exception as e:
+            print(f'[BlogGenerator] sunday_strategy_talk AI生成失敗: {e}')
+        return fallback
 
     # ------------------------------------------------------------------
     # 投稿前チェック

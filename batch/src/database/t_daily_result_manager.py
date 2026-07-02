@@ -93,6 +93,32 @@ class TDailyResultManager(DBManager):
         except Exception:
             return random.choice(['rei', 'mirai', 'ritu'])
 
+    def get_weekly_summary(self, week_start: str, week_end: str) -> List[Dict]:
+        """指定週の週間損益合計・勝利数をキャラごとに集計して返す（降順）。"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT analyst_name,
+                       SUM(total_profit_loss) AS weekly_profit_loss,
+                       SUM(win_count)         AS weekly_win_count,
+                       MAX(current_balance)   AS current_balance
+                FROM t_daily_result
+                WHERE result_date BETWEEN %s AND %s
+                GROUP BY analyst_name
+                ORDER BY weekly_profit_loss DESC
+            ''', (week_start, week_end))
+            rows = cursor.fetchall()
+        result = []
+        for i, r in enumerate(rows):
+            result.append({
+                'rank':                i + 1,
+                'analyst_name':        r['analyst_name'],
+                'weekly_profit_loss':  r['weekly_profit_loss'],
+                'weekly_win_count':    r['weekly_win_count'],
+                'current_balance':     r['current_balance'],
+            })
+        return result
+
     def exists(self, result_date: str) -> bool:
         with self._get_connection() as conn:
             cursor = conn.cursor()
